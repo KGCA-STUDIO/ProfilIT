@@ -1,0 +1,5 @@
+/target
+dist/
+
+# tauri-build 가 자동 생성합니다
+src-tauri/gen/

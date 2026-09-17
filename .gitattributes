@@ -1,0 +1,9 @@
+# 리포지터리에는 LF 로 저장합니다. Windows 에서 작업해도 다른 OS 에서
+# 줄바꿈만 바뀐 diff 가 생기지 않습니다.
+* text=auto eol=lf
+
+# 이진 파일은 건드리지 않습니다.
+*.png binary
+*.ico binary
+*.jpg binary
+*.webp binary

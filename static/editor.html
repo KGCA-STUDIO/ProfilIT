@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ProfileIT 편집기</title>
+    <link rel="stylesheet" href="editor.css" />
+  </head>
+  <body>
+    <header class="ed-bar">
+      <h1 class="ed-bar__title">ProfileIT 편집기</h1>
+
+      <!-- 어느 언어의 글을 고치고 있는지. 미리보기도 함께 바뀝니다. -->
+      <nav class="ed-langs" id="lang-tabs" aria-label="편집 중인 언어"></nav>
+
+      <div class="ed-bar__actions">
+        <span class="ed-status" id="status" role="status" aria-live="polite"></span>
+
+        <!-- 화면 언어. 명함 언어(위 탭)와 별개입니다. -->
+        <nav class="ed-uilangs" id="ui-lang"></nav>
+        <button class="ed-btn" id="build" type="button">사이트 생성</button>
+        <button class="ed-btn" id="github" type="button">GitHub 연결</button>
+        <button class="ed-btn" id="deploy" type="button">GitHub 배포</button>
+        <button class="ed-btn ed-btn--primary" id="save" type="button">저장</button>
+      </div>
+    </header>
+
+    <div class="ed-body">
+      <main class="ed-panel" id="panel">
+        <p class="ed-loading">…</p>
+      </main>
+
+      <aside class="ed-preview">
+        <div class="ed-preview__bar">
+          <span>미리보기</span>
+          <button class="ed-btn ed-btn--ghost" id="reload" type="button">새로고침</button>
+        </div>
+        <!-- 실제 렌더러 출력입니다. 편집기용 렌더링을 따로 두지 않았습니다. -->
+        <iframe class="ed-preview__frame" id="preview" title="미리보기"></iframe>
+      </aside>
+    </div>
+
+    <!-- 검증 결과. 오류가 있으면 저장되지 않습니다. -->
+    <div class="ed-diagnostics" id="diagnostics" hidden></div>
+
+    <!-- GitHub 연결·저장소 선택 -->
+    <dialog class="ed-dialog" id="github-dialog">
+      <form method="dialog" class="ed-dialog__body" id="github-body"></form>
+    </dialog>
+
+    <script src="editor.js" defer></script>
+  </body>
+</html>

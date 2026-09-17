@@ -1,0 +1,36 @@
+[package]
+name = "profileit"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "섹션 기반 온라인 명함을 만드는 정적 사이트 생성기"
+license = "MIT"
+
+# 루트 패키지가 곧 워크스페이스 루트입니다. 데스크톱 앱(src-tauri)이
+# 이 크레이트를 라이브러리로 씁니다.
+[workspace]
+members = ["src-tauri"]
+
+[features]
+default = ["editor"]
+# 로컬 편집 UI. 끄면 정적 생성만 남아 의존성이 4개로 줄고 바이너리가 작아집니다.
+editor = ["dep:axum", "dep:tokio", "dep:toml_edit", "dep:ureq", "dep:keyring"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+maud = "0.27"
+serde_json = "1"
+
+axum = { version = "0.8", optional = true }
+# GitHub API 호출. rustls 를 써서 시스템 OpenSSL 에 기대지 않습니다.
+ureq = { version = "2", default-features = false, features = ["tls", "json"], optional = true }
+# 토큰은 OS 자격증명 저장소에 둡니다 (Windows 자격 증명 관리자 등).
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"], optional = true }
+toml_edit = { version = "0.22", optional = true }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true

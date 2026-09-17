@@ -1,0 +1,859 @@
+/*
+ * profileit 기본 스타일시트.
+ *
+ * 설계 원칙: 이 파일은 --pf-* 토큰을 **소비만** 합니다. 테마 값은 렌더러가
+ * <head> 의 인라인 <style> 로 주입하므로, 테마가 바뀌어도 이 파일은 그대로
+ * 재사용되고 브라우저 캐시에 남습니다. 토큰과 [theme] 필드는 1:1 대응입니다.
+ */
+
+/* ─── 토큰 기본값 ──────────────────────────────────────────────────────────
+   렌더러가 주입하지 않은 토큰이 있어도 페이지가 깨지지 않도록 하는 안전망. */
+:root {
+  --pf-background: #ffffff;
+  --pf-sheet-bg: #ffffff;
+  --pf-sheet-radius: 24px;
+  --pf-sheet-shadow: 0 8px 30px rgb(0 0 0 / 12%);
+  --pf-card-bg: #f7fafc;
+  --pf-card-radius: 14px;
+  --pf-card-shadow: none;
+  --pf-accent: #2f9fd0;
+  --pf-text-heading: #111111;
+  --pf-text-body: #333333;
+  --pf-text-card-title: #111111;
+  --pf-text-muted: #777777;
+  --pf-font-family: system-ui, -apple-system, sans-serif;
+  /* [theme.font.heading_preset] 이 없으면 렌더러가 본문 폰트를 그대로 넣습니다. */
+  --pf-font-heading-family: var(--pf-font-family);
+  --pf-font-heading-weight: 700;
+  --pf-font-size-base: 15px;
+  --pf-line-height: 1.6;
+  --pf-letter-spacing: normal;
+
+  /* 배경 이미지 레이어 ([theme.background] type = "image" 일 때만 채워집니다) */
+  --pf-background-image: none;
+  --pf-background-fit: cover;
+  --pf-background-position: center;
+  --pf-background-repeat: no-repeat;
+  --pf-background-blur: 0px;
+  --pf-background-overlay: transparent;
+
+  /* 레이아웃 상수 — 테마가 아니라 구조라서 스키마에 없습니다. */
+  --pf-content-width: 520px;
+  --pf-gutter: 16px;
+}
+
+/* ─── 리셋 ─────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/*
+ * 모든 글자 크기가 rem 이라서 이 한 값이 전체 크기를 좌우합니다.
+ *
+ * base_size 를 px 로 주면 크기가 고정되고, rem 으로 주면(예: "1rem") 읽는
+ * 사람이 브라우저에 설정한 기본 글자 크기를 따라갑니다. 접근성 면에서는
+ * rem 쪽이 낫지만 기본값은 px 입니다 — 디자인이 어긋나 보이는 쪽이 먼저
+ * 문제로 인식되기 때문입니다. docs/schema.md 에 이 선택을 적어두었습니다.
+ */
+html {
+  font-size: var(--pf-font-size-base);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  position: relative; /* .pf-decor 의 기준 박스 */
+  margin: 0;
+  min-height: 100svh;
+  background: var(--pf-background);
+  background-attachment: fixed;
+  color: var(--pf-text-body);
+  font-family: var(--pf-font-family);
+  font-size: 1rem;
+  line-height: var(--pf-line-height);
+  letter-spacing: var(--pf-letter-spacing);
+  word-break: keep-all; /* 한국어 어절 단위 줄바꿈 */
+  overflow-wrap: anywhere; /* 긴 URL 이 가로 스크롤을 만들지 않도록 */
+}
+
+/*
+ * 배경 이미지 전용 레이어.
+ *
+ * background-image 에는 filter 를 걸 수 없어서 흐림 처리를 하려면 별도 레이어가
+ * 필요합니다. type 이 image 가 아니면 --pf-background-image 가 none 이라
+ * 아무것도 그리지 않습니다.
+ */
+.pf-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--pf-background-image);
+  background-size: var(--pf-background-fit);
+  background-position: var(--pf-background-position);
+  background-repeat: var(--pf-background-repeat);
+  filter: blur(var(--pf-background-blur));
+  /* blur 는 가장자리를 투명하게 만듭니다. 살짝 키워서 테두리를 가립니다. */
+  scale: 1.06;
+  pointer-events: none;
+}
+
+/* 가독성용 덮개. 부모의 blur 가 여기에도 걸리지만 단색이라 결과가 같습니다. */
+.pf-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--pf-background-overlay);
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  color: var(--pf-text-heading);
+  font-family: var(--pf-font-heading-family);
+  font-weight: var(--pf-font-heading-weight);
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.pf-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ─── 장식 레이어 ──────────────────────────────────────────────────────────
+   뷰포트가 아니라 문서에 고정합니다. fixed 로 두면 스크롤할 때 내용이 하단
+   장식 밑을 지나가면서 글자가 가려집니다. */
+.pf-decor {
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* .pf-backdrop(0) 위, .pf-page(2) 아래 */
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pf-decor__top,
+.pf-decor__bottom {
+  position: absolute;
+  left: 50%;
+  width: min(100%, 620px);
+  translate: -50% 0;
+}
+
+.pf-decor__top {
+  top: 0;
+  height: 190px;
+}
+
+.pf-decor__bottom {
+  bottom: 0;
+  height: 150px;
+}
+
+/* ─── 페이지 / 명함 본체 ───────────────────────────────────────────────── */
+.pf-page {
+  position: relative;
+  z-index: 2; /* 배경(0) · 장식(1) 레이어 위 */
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100svh;
+  max-width: calc(var(--pf-content-width) + var(--pf-gutter) * 2);
+  margin-inline: auto;
+  padding: 96px var(--pf-gutter) 72px;
+}
+
+.pf-sheet {
+  padding: 0 22px 30px;
+  border-radius: var(--pf-sheet-radius);
+  background: var(--pf-sheet-bg);
+  box-shadow: var(--pf-sheet-shadow);
+}
+
+/* ─── 명함 상단 ────────────────────────────────────────────────────────── */
+.pf-hero {
+  padding-top: 26px;
+  text-align: center;
+}
+
+.pf-avatar {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  /* 종이 위쪽 테두리에 걸치도록 끌어올립니다 — 명함다운 인상의 대부분이
+     이 한 줄에서 나옵니다. */
+  margin: -74px auto 14px;
+  border: 4px solid var(--pf-sheet-bg);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--pf-sheet-bg);
+  box-shadow: 0 4px 14px rgb(16 62 82 / 16%);
+}
+
+.pf-avatar--placeholder {
+  color: var(--pf-accent);
+  font-size: 2.4rem;
+  font-weight: var(--pf-font-heading-weight);
+  background: linear-gradient(160deg, #ffffff, #e9f6fd);
+}
+
+.pf-name {
+  font-size: 1.533rem;
+}
+
+.pf-tagline {
+  margin-top: 3px;
+  color: var(--pf-accent);
+  font-size: 0.933rem;
+  font-weight: 700;
+}
+
+.pf-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 7px;
+  color: var(--pf-text-muted);
+  font-size: 0.833rem;
+  font-weight: 600;
+}
+
+.pf-location svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pf-bio {
+  margin: 12px auto 0;
+  max-width: 34ch;
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+/* ─── 소셜 아이콘 ──────────────────────────────────────────────────────── */
+.pf-socials {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.pf-social {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--pf-text-heading);
+  transition: background-color 0.15s ease, scale 0.15s ease;
+}
+
+.pf-social svg {
+  width: 23px;
+  height: 23px;
+}
+
+.pf-social:hover {
+  background: color-mix(in srgb, var(--pf-accent) 12%, transparent);
+}
+
+.pf-social:active {
+  scale: 0.94;
+}
+
+/* ─── 상단 액션 버튼 ───────────────────────────────────────────────────── */
+.pf-actions {
+  display: none; /* JS 가 있어야 동작하는 버튼들입니다 */
+  gap: 8px;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+html.js .pf-actions {
+  display: flex;
+}
+
+.pf-action {
+  padding: 9px 18px;
+  border: 1.5px solid color-mix(in srgb, var(--pf-accent) 40%, transparent);
+  border-radius: 999px;
+  color: var(--pf-accent);
+  font-size: 0.867rem;
+  font-weight: 700;
+  transition: background-color 0.15s ease, scale 0.15s ease;
+}
+
+.pf-action:hover {
+  background: color-mix(in srgb, var(--pf-accent) 10%, transparent);
+}
+
+.pf-action:active {
+  scale: 0.97;
+}
+
+.pf-action--primary {
+  border-color: var(--pf-accent);
+  background: var(--pf-accent);
+  color: #fff;
+}
+
+.pf-action--primary:hover {
+  background: color-mix(in srgb, var(--pf-accent) 88%, #000);
+}
+
+/* ─── 섹션 공통 ────────────────────────────────────────────────────────── */
+.pf-section {
+  margin-top: 30px;
+  padding-top: 26px;
+  border-top: 1px solid color-mix(in srgb, var(--pf-text-muted) 20%, transparent);
+}
+
+.pf-section__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+  font-size: 1rem;
+}
+
+.pf-section__icon {
+  font-size: 1.067rem;
+  line-height: 1;
+}
+
+/* ─── type = "about" ───────────────────────────────────────────────────── */
+.pf-about {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 0.92rem;
+}
+
+/* ─── type = "timeline" ────────────────────────────────────────────────────
+   왼쪽 레일 + 점. 항목이 하나여도 레일이 어색하지 않도록 레일은 항목마다
+   그리고, 마지막 항목에서 끊습니다. */
+.pf-timeline__item {
+  position: relative;
+  padding-left: 22px;
+  padding-bottom: 20px;
+}
+
+.pf-timeline__item:last-child {
+  padding-bottom: 0;
+}
+
+/* 레일 */
+.pf-timeline__item::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 0;
+  left: 4.5px;
+  width: 2px;
+  background: color-mix(in srgb, var(--pf-accent) 22%, transparent);
+}
+
+.pf-timeline__item:last-child::before {
+  display: none;
+}
+
+/* 점 */
+.pf-timeline__item::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 0;
+  width: 11px;
+  height: 11px;
+  border: 2.5px solid var(--pf-accent);
+  border-radius: 50%;
+  background: var(--pf-sheet-bg);
+}
+
+.pf-timeline__period {
+  color: var(--pf-text-muted);
+  font-size: 0.767rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.pf-timeline__title {
+  margin-top: 1px;
+  font-size: 0.967rem;
+}
+
+.pf-timeline__title a {
+  text-decoration-color: color-mix(in srgb, var(--pf-accent) 45%, transparent);
+  text-underline-offset: 3px;
+}
+
+.pf-timeline__subtitle {
+  margin-top: 1px;
+  color: var(--pf-accent);
+  font-size: 0.833rem;
+  font-weight: 600;
+}
+
+.pf-timeline__desc {
+  margin-top: 5px;
+  font-size: 0.867rem;
+  line-height: 1.6;
+}
+
+/* ─── type = "checklist" ───────────────────────────────────────────────── */
+.pf-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.pf-progress__label {
+  color: var(--pf-text-muted);
+  font-size: 0.767rem;
+  font-weight: 700;
+}
+
+.pf-progress__track {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pf-text-muted) 18%, transparent);
+  overflow: hidden;
+}
+
+.pf-progress__bar {
+  display: block;
+  width: var(--pf-progress-value, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--pf-accent);
+}
+
+.pf-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.pf-checklist__item {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 4px 9px;
+  align-items: start;
+  font-size: 0.92rem;
+}
+
+.pf-checklist__mark {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  margin-top: 1px;
+  border: 2px solid color-mix(in srgb, var(--pf-text-muted) 45%, transparent);
+  border-radius: 6px;
+  color: #fff;
+}
+
+.pf-checklist__mark svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pf-checklist__item--done .pf-checklist__mark {
+  border-color: var(--pf-accent);
+  background: var(--pf-accent);
+}
+
+/* 달성 항목은 흐리게 처리하되, 상태는 마크업의 숨은 텍스트로도 전달됩니다 —
+   색과 취소선만으로 의미를 나르지 않습니다.
+   취소선을 __text 가 아니라 __label 에 거는 이유: text-decoration 은 자손
+   인라인 박스로 전파되므로, 상위에 걸면 날짜 배지 앞 공백까지 선이 그어집니다. */
+.pf-checklist__item--done .pf-checklist__text {
+  color: var(--pf-text-muted);
+}
+
+.pf-checklist__item--done .pf-checklist__label {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--pf-text-muted) 50%, transparent);
+}
+
+.pf-checklist__date {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pf-accent) 12%, transparent);
+  color: var(--pf-accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+.pf-checklist__note {
+  grid-column: 2;
+  color: var(--pf-text-muted);
+  font-size: 0.8rem;
+}
+
+/* ─── type = "tags" ────────────────────────────────────────────────────── */
+.pf-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.pf-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pf-accent) 11%, transparent);
+  color: var(--pf-accent);
+  font-size: 0.833rem;
+  font-weight: 700;
+}
+
+/* 이모지는 폰트에 따라 글자보다 크게 잡혀 줄 높이를 밀어냅니다. */
+.pf-tag__icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+/* ─── type = "links" ──────────────────────────────────────────────────────
+   링크와 공유 버튼은 형제 관계입니다 — <a> 안에 <button> 을 넣으면 유효하지
+   않은 HTML 이고 키보드 순회가 깨집니다. 카드 전체 클릭은 <a>::after 오버레이가
+   담당하고, 버튼이 z-index 로 그 위에 올라갑니다. */
+.pf-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pf-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 38px;
+  align-items: center;
+  min-height: 52px;
+  padding: 9px 8px 9px 14px;
+  border-radius: var(--pf-card-radius);
+  background: var(--pf-card-bg);
+  box-shadow: var(--pf-card-shadow);
+  transition: background-color 0.15s ease;
+}
+
+.pf-card:has(.pf-card__link:hover) {
+  background: color-mix(in srgb, var(--pf-accent) 10%, var(--pf-card-bg));
+}
+
+/* [theme.card] style = "outline" */
+body[data-card-style="outline"] .pf-card {
+  background: transparent;
+  border: 1.5px solid color-mix(in srgb, var(--pf-text-muted) 30%, transparent);
+  box-shadow: none;
+}
+
+/* [theme.card] style = "glass" */
+body[data-card-style="glass"] .pf-card {
+  background: color-mix(in srgb, var(--pf-card-bg) 55%, transparent);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgb(255 255 255 / 45%);
+}
+
+.pf-card__link {
+  min-width: 0;
+  color: var(--pf-text-card-title);
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.pf-card__link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.pf-card__link:focus-visible {
+  outline: none;
+}
+
+.pf-card__link:focus-visible::after {
+  outline: 3px solid var(--pf-accent);
+  outline-offset: 2px;
+}
+
+.pf-card__subtitle {
+  display: block;
+  margin-top: 1px;
+  color: var(--pf-text-muted);
+  font-size: 0.767rem;
+  font-weight: 500;
+}
+
+.pf-card__badge {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--pf-accent);
+  color: #fff;
+  font-size: 0.667rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}
+
+.pf-card__share {
+  z-index: 2; /* 카드 전체 클릭 영역(z-index:1) 위 */
+  display: none;
+  place-items: center;
+  justify-self: end;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: var(--pf-text-muted);
+}
+
+html.js .pf-card__share {
+  display: grid;
+}
+
+.pf-card__share svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pf-card__share:hover {
+  background: rgb(0 0 0 / 6%);
+}
+
+/* [[sections.items]] highlight = true */
+.pf-card--highlight {
+  animation: pf-wiggle 3s ease-in-out infinite;
+}
+
+@keyframes pf-wiggle {
+  0%,
+  88%,
+  100% {
+    rotate: 0deg;
+  }
+  91% {
+    rotate: -0.8deg;
+  }
+  94% {
+    rotate: 0.8deg;
+  }
+  97% {
+    rotate: -0.4deg;
+  }
+}
+
+/* ─── type = "contact" ────────────────────────────────────────────────────
+   라벨 열 폭을 고정하지 않고 max-content 로 둡니다. "이메일"·"웹사이트" 처럼
+   글자 수가 다른 라벨이 섞여도 값의 시작점이 가지런히 맞습니다. */
+.pf-contact {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 9px 14px;
+  font-size: 0.9rem;
+}
+
+.pf-contact__row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: span 2;
+  align-items: baseline;
+}
+
+.pf-contact__label {
+  color: var(--pf-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.pf-contact__value {
+  color: var(--pf-text-card-title);
+  font-weight: 600;
+  text-decoration-color: color-mix(in srgb, var(--pf-accent) 40%, transparent);
+  text-underline-offset: 3px;
+}
+
+/* ─── 언어 선택기 ──────────────────────────────────────────────────────────
+   <select> 가 아니라 링크 목록입니다. 각 언어판이 별도 정적 페이지라
+   자바스크립트 없이도 동작하고 검색엔진이 따라갈 수 있습니다. */
+/*
+ * 하나의 묶음으로 보이도록 알약 하나 안에 나란히 넣습니다. 낱개 알약을
+ * 띄워두면 배경 장식 위에서 "지금 이 언어"와 "누를 수 있는 언어"의 구분이
+ * 흐려집니다.
+ */
+.pf-languages {
+  display: inline-flex;
+  align-self: center;
+  gap: 3px;
+  margin-top: 22px;
+  padding: 3px;
+  border-radius: 999px;
+  /* 장식 위에 얹히므로 불투명 바탕과 테두리로 띄웁니다. */
+  background: var(--pf-sheet-bg);
+  border: 1px solid color-mix(in srgb, var(--pf-text-muted) 22%, transparent);
+  box-shadow: 0 2px 8px rgb(16 62 82 / 10%);
+}
+
+.pf-language {
+  padding: 5px 15px;
+  border-radius: 999px;
+  color: var(--pf-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.pf-language:hover {
+  background: color-mix(in srgb, var(--pf-accent) 12%, transparent);
+  color: var(--pf-text-heading);
+}
+
+/* 지금 언어. 채운 배경 + 흰 글자로 나머지와 확실히 갈립니다. */
+.pf-language--current {
+  background: var(--pf-accent);
+  color: #fff;
+}
+
+/* ─── 푸터 ─────────────────────────────────────────────────────────────── */
+.pf-footer {
+  margin-top: auto;
+  padding-top: 26px;
+  text-align: center;
+}
+
+/* 장식 위에 얹히므로 muted 대신 본문 색을 씁니다 — 색종이 위에서도 읽혀야 합니다. */
+.pf-footer__powered {
+  color: var(--pf-text-body);
+  font-size: 0.767rem;
+  font-weight: 700;
+}
+
+.pf-footer__powered a {
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+}
+
+/* ─── 토스트 ───────────────────────────────────────────────────────────── */
+.pf-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 10;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: rgb(18 32 40 / 88%);
+  color: #fff;
+  font-size: 0.867rem;
+  font-weight: 600;
+  translate: -50% 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, translate 0.18s ease;
+}
+
+.pf-toast--visible {
+  translate: -50% 0;
+  opacity: 1;
+}
+
+/* ─── 접근성 · 반응형 ──────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (width <= 400px) {
+  .pf-page {
+    padding-top: 84px;
+  }
+
+  .pf-sheet {
+    padding-inline: 17px;
+  }
+
+  .pf-avatar {
+    width: 86px;
+    height: 86px;
+    margin-top: -66px;
+  }
+
+  .pf-name {
+    font-size: 1.4rem;
+  }
+}
+
+/* 명함을 인쇄하는 경우 — 장식과 인터랙션 요소는 제외 */
+@media print {
+  .pf-decor,
+  .pf-actions,
+  .pf-card__share,
+  .pf-languages,
+  .pf-toast,
+  .pf-footer {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .pf-page {
+    padding: 0;
+    min-height: 0;
+  }
+
+  .pf-sheet {
+    box-shadow: none;
+  }
+
+  .pf-avatar {
+    margin-top: 0;
+  }
+}
