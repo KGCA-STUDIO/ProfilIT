@@ -1,11 +1,13 @@
-//! 사용자에게 보일 문구.
+//! User-facing text.
 //!
-//! **완성된 문장이 아니라 키와 인자를 들고 다닙니다.** 문장을 만드는 일은
-//! 화면에 내보내는 쪽(CLI 또는 편집기)이 그때의 언어로 합니다.
+//! **These carry a key and arguments, not a finished sentence.** Building the
+//! actual sentence is left to whatever renders it (the CLI or the editor),
+//! in whatever language is active at that moment.
 //!
-//! 검증기나 배포기가 한국어 문장을 바로 만들면, 편집기 화면을 영어로 바꿔도
-//! 오류만 한국어로 남습니다. 그리고 편집기가 오류 종류를 알아내려고 한국어
-//! 문구를 문자열 비교하게 되는데, 문구를 다듬는 순간 조용히 깨집니다.
+//! If the validator or deployer baked in Korean sentences directly, switching
+//! the editor UI to English would still leave errors in Korean. Worse, the
+//! editor would end up string-matching on those Korean phrases to figure out
+//! the error kind, which breaks silently the moment someone tweaks the wording.
 
 use std::collections::BTreeMap;
 
@@ -16,7 +18,7 @@ use crate::i18n::Strings;
 #[derive(Debug, Clone, Serialize)]
 pub struct Message {
     pub key: &'static str,
-    /// `{이름}` 자리에 끼워 넣을 값들.
+    /// Values to substitute into `{name}` placeholders.
     pub args: BTreeMap<&'static str, String>,
 }
 
@@ -33,19 +35,21 @@ impl Message {
         self
     }
 
-    /// 인자 자체가 번역되어야 할 때. 예: "푸시 실패" 의 "푸시".
+    /// For when the argument itself needs translating, e.g. "push" in "push failed".
     ///
-    /// 값 앞에 `@` 를 붙여 두고 조립할 때 한 번 더 찾아봅니다. 인자를 그 자리에서
-    /// 번역해 넣으면 `Message` 가 언어를 정해버리게 되는데, 그러면 CLI 와 편집기가
-    /// 서로 다른 언어를 골라 쓰는 지금 구조가 무너집니다.
+    /// We prefix the value with `@` and look it up again at render time. If we
+    /// translated the argument right here instead, `Message` would end up locked
+    /// to one language, which breaks the whole point of letting the CLI and the
+    /// editor each pick their own language.
     pub fn with_key(self, name: &'static str, key: &str) -> Message {
         self.with(name, format!("@{key}"))
     }
 
-    /// 주어진 언어로 문장을 만듭니다.
+    /// Renders the sentence in the given language.
     ///
-    /// 없는 키는 키 자체가 나옵니다 — 화면에 `msg.something` 이 보이면 번역이
-    /// 빠졌다는 뜻이고, 빈 칸보다 훨씬 찾기 쉽습니다.
+    /// A missing key falls back to the key itself — if `msg.something` shows up
+    /// on screen, that means the translation is missing, and it's much easier to
+    /// spot than a blank string.
     pub fn render(&self, strings: &Strings) -> String {
         let mut text = strings.get(self.key).to_string();
         for (name, value) in &self.args {
@@ -59,7 +63,7 @@ impl Message {
     }
 }
 
-/// 키 하나로 끝나는 문구를 짧게 쓰기 위한 것.
+/// Shorthand for messages that are just a single key with no arguments.
 impl From<&'static str> for Message {
     fn from(key: &'static str) -> Message {
         Message::new(key)
@@ -81,7 +85,7 @@ mod tests {
         assert!(!rendered.contains("{value}"), "{rendered}");
     }
 
-    /// 같은 문구가 언어마다 다르게 나와야 합니다.
+    /// The same message should render differently per language.
     #[test]
     fn renders_in_each_language() {
         let message = Message::new("msg.color.invalid").with("value", "#zz");

@@ -1,8 +1,9 @@
-//! ProfileIT — 섹션 기반 온라인 명함을 만드는 정적 사이트 생성기.
+//! ProfileIT — a static site generator for section-based online business cards.
 //!
-//! CLI(`src/main.rs`)와 데스크톱 앱(`src-tauri/`)이 이 라이브러리를 함께 씁니다.
-//! 편집 로직을 앱 쪽에 두지 않은 이유는, 그러면 검증 규칙이 두 곳에 생기고
-//! 둘이 어긋나기 시작하기 때문입니다.
+//! Both the CLI (`src/main.rs`) and the desktop app (`src-tauri/`) share this
+//! library. The editing logic doesn't live in the app itself, because that
+//! would create two separate sets of validation rules that would eventually
+//! drift apart.
 
 pub mod build;
 pub mod config;
@@ -29,11 +30,11 @@ use config::Config;
 use message::Message;
 use validate::Diagnostic;
 
-/// 설정 파일이 놓인 폴더. 에셋 경로와 git 작업의 기준입니다.
+/// The folder the config file lives in. This is the base for asset paths and git operations.
 ///
-/// `Path::parent` 는 `"profile.toml"` 같은 상대 경로에 대해 `None` 이 아니라
-/// **빈 경로**를 돌려줍니다. 그대로 쓰면 `git` 이 빈 디렉터리를 보게 되어
-/// "리포지터리가 아닙니다" 로 엉뚱하게 실패합니다.
+/// `Path::parent` returns an **empty path** rather than `None` for a relative
+/// path like `"profile.toml"`. Using that as-is would make `git` see an empty
+/// directory and fail with a confusing "not a repository" error.
 pub fn project_root(config_path: &Path) -> &Path {
     config_path
         .parent()
@@ -41,11 +42,11 @@ pub fn project_root(config_path: &Path) -> &Path {
         .unwrap_or(Path::new("."))
 }
 
-/// 설정을 읽고 검증까지 마칩니다.
+/// Reads the config and runs it through validation.
 ///
-/// 오류가 하나라도 있으면 `Err` 입니다 — **검증에 실패한 설정으로는 빌드하지
-/// 않습니다.** 깨진 결과물이 배포되는 것보다 빌드가 멈추는 쪽이 낫습니다.
-/// 경고는 함께 돌려주므로 호출하는 쪽이 보여주면 됩니다.
+/// Returns `Err` if there's even a single error — **we never build from a
+/// config that failed validation.** A stopped build beats a broken result
+/// getting deployed. Warnings are returned alongside, for the caller to display.
 pub fn load(path: &Path) -> Result<(Config, Vec<Diagnostic>), LoadError> {
     let source = std::fs::read_to_string(path).map_err(|err| LoadError::Read {
         path: path.display().to_string(),
@@ -54,13 +55,13 @@ pub fn load(path: &Path) -> Result<(Config, Vec<Diagnostic>), LoadError> {
 
     let config: Config = toml::from_str(&source).map_err(|err| LoadError::Parse {
         path: path.display().to_string(),
-        // toml 크레이트가 줄·열 정보를 붙여주므로 그대로 넘깁니다.
+        // The toml crate already attaches line/column info, so we just pass it through.
         message: err.to_string(),
     })?;
 
     let root = project_root(path);
     let mut diagnostics = validate::validate(&config, root);
-    // 섹션의 알 수 없는 키는 파싱에서 걸러지지 않아 원본을 한 번 더 훑습니다.
+    // Unknown section keys slip past parsing, so we re-scan the raw source for them.
     diagnostics.extend(validate::lint_section_keys(&source));
 
     if validate::has_errors(&diagnostics) {
@@ -78,7 +79,7 @@ pub enum LoadError {
 }
 
 impl LoadError {
-    /// 화면에 내보낼 문구. 어느 언어로 만들지는 부르는 쪽이 정합니다.
+    /// The message to display. Whichever side calls this decides the language.
     pub fn message(&self) -> Message {
         match self {
             LoadError::Read { path, message } => Message::new("msg.load.read")

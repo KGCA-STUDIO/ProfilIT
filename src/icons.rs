@@ -1,16 +1,17 @@
-//! 내장 SVG 아이콘.
+//! Built-in SVG icons.
 //!
-//! 모든 아이콘은 `viewBox="0 0 24 24"` 에 맞춰져 있고 `currentColor` 를 씁니다.
-//! 색은 CSS 토큰이 정하므로 여기에는 고정 색이 없습니다.
+//! Every icon is sized to `viewBox="0 0 24 24"` and uses `currentColor`.
+//! Color is decided by CSS tokens, so there are no hardcoded colors here.
 //!
-//! 플랫폼을 추가하려면 `Platform` 에 변형을 넣고 `platform` 함수에 한 갈래를
-//! 더하면 됩니다. 기여 받기 가장 쉬운 지점이라 일부러 단순하게 두었습니다.
+//! To add a platform, add a variant to `Platform` and a matching branch to the
+//! `platform` function. This is kept deliberately simple since it's the
+//! easiest place for contributors to add to.
 
 use maud::{Markup, PreEscaped};
 
 use crate::config::Platform;
 
-/// `<svg>` 안에 들어갈 내용. 바깥 `<svg>` 태그는 호출하는 쪽이 씁니다.
+/// The contents to place inside `<svg>`. The caller is responsible for the outer `<svg>` tag.
 pub fn platform(platform: Platform) -> Markup {
     let body = match platform {
         Platform::Instagram => {
@@ -31,7 +32,7 @@ pub fn platform(platform: Platform) -> Markup {
         Platform::Facebook => {
             r#"<path fill="currentColor" d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.5 2.9h-2.3v7A10 10 0 0 0 22 12Z"/>"#
         }
-        // 네이버의 N 자형.
+        // Naver's stylized "N" shape.
         Platform::Naver | Platform::NaverBlog => {
             r#"<path fill="currentColor" d="M4 4h5.1l5.4 8.1V4H20v16h-5.1L9.5 11.9V20H4Z"/>"#
         }
@@ -50,7 +51,7 @@ pub fn platform(platform: Platform) -> Markup {
         Platform::Rss => {
             r#"<circle cx="6" cy="18" r="2" fill="currentColor"/><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>"#
         }
-        // 검증에서 icon 을 요구하므로 렌더러는 이 갈래를 쓰지 않습니다.
+        // Validation requires an icon for this case, so the renderer never actually hits this branch.
         Platform::Custom => {
             r#"<path d="M9 15 15 9m-4.5-1.5 1.8-1.8a3.9 3.9 0 0 1 5.5 5.5l-1.8 1.8m-4.5 4.5-1.8 1.8a3.9 3.9 0 0 1-5.5-5.5l1.8-1.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>"#
         }
@@ -59,7 +60,7 @@ pub fn platform(platform: Platform) -> Markup {
     PreEscaped(body.to_string())
 }
 
-/// 카드 오른쪽 공유 버튼의 점 세 개.
+/// The three dots for the card's share button, on the right.
 pub fn share() -> Markup {
     PreEscaped(
         r#"<circle cx="12" cy="5" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="19" r="1.9" fill="currentColor"/>"#
@@ -67,7 +68,7 @@ pub fn share() -> Markup {
     )
 }
 
-/// 프로필 지역 표기 앞의 핀.
+/// The pin shown before the profile's location text.
 pub fn location() -> Markup {
     PreEscaped(
         r#"<path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="10" r="2.6" fill="currentColor"/>"#
@@ -75,7 +76,7 @@ pub fn location() -> Markup {
     )
 }
 
-/// 버킷리스트 달성 표시.
+/// The checkmark shown for a completed bucket list item.
 pub fn check() -> Markup {
     PreEscaped(
         r#"<path d="M5 13l4.5 4.5L19 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>"#

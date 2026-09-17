@@ -1,10 +1,11 @@
 /*
- * 명함 인터랙션 — 연락처 저장(vCard), 페이지 공유, 링크 공유.
+ * Card interactions — saving a contact (vCard), sharing the page, sharing a link.
  *
- * 점진적 향상(progressive enhancement)으로 짰습니다. JS 가 없으면 버튼들은
- * CSS 에서 숨겨진 채 남고, 링크·연락처는 평범한 <a> 로 그대로 동작합니다.
- * [features] 의 share_menu / vcard_download 가 false 면 렌더러가 해당 버튼을
- * 아예 출력하지 않으므로, 여기서는 존재 여부를 따지지 않습니다.
+ * Written as progressive enhancement. Without JS the buttons stay hidden via
+ * CSS, and links/contacts still work as plain <a> tags. If share_menu /
+ * vcard_download under [features] are false, the renderer never outputs the
+ * corresponding button in the first place, so we don't need to check for
+ * their presence here.
  */
 (function () {
   "use strict";
@@ -16,8 +17,9 @@
   var toastTimer = null;
 
   /*
-   * UI 문구. 렌더러가 현재 언어의 문구만 골라 #pf-strings 에 넣어줍니다.
-   * 스크립트에 한국어를 박아두면 영어판에서 토스트만 한국어로 나옵니다.
+   * UI strings. The renderer picks out just the current language's strings
+   * and drops them into #pf-strings. Hardcoding Korean in the script would
+   * mean the toasts show up in Korean even on the English version of the page.
    */
   var strings = (function () {
     var node = document.getElementById("pf-strings");
@@ -47,7 +49,7 @@
     if (navigator.clipboard && window.isSecureContext) {
       return navigator.clipboard.writeText(text);
     }
-    // file:// 이나 http:// 에서는 Clipboard API 를 쓸 수 없습니다.
+    // The Clipboard API isn't available on file:// or http://.
     return new Promise(function (resolve, reject) {
       var area = document.createElement("textarea");
       area.value = text;
@@ -62,11 +64,11 @@
     });
   }
 
-  /** 모바일이면 OS 공유 시트, 아니면 클립보드 복사. */
+  /** Uses the OS share sheet on mobile, otherwise copies to clipboard. */
   function shareOrCopy(title, url) {
     if (navigator.share) {
       navigator.share({ title: title, url: url }).catch(function () {
-        /* 사용자가 취소한 경우 — 알릴 것이 없습니다. */
+        /* User canceled — nothing to report. */
       });
       return;
     }
@@ -93,10 +95,10 @@
   }
 
   /**
-   * vCard 3.0 텍스트를 만듭니다.
+   * Builds a vCard 3.0 text blob.
    *
-   * CRLF 줄바꿈과 세미콜론·콤마 이스케이프는 규격 요구사항입니다. LF 만 쓰면
-   * iOS 연락처가 파일을 열지 못하는 경우가 있습니다.
+   * CRLF line endings and escaping semicolons/commas are spec requirements.
+   * Using LF alone can leave iOS Contacts unable to open the file.
    */
   function buildVcard(data) {
     function esc(value) {
@@ -105,8 +107,9 @@
 
     var lines = ["BEGIN:VCARD", "VERSION:3.0"];
     lines.push("FN:" + esc(data.name));
-    // N 은 구조화된 이름(성;이름;...)입니다. 한국어 이름은 분리 규칙이
-    // 모호해서 성 자리에 전체를 넣고 FN 으로 표시하게 둡니다.
+    // N is the structured name (family;given;...). Splitting rules for
+    // Korean names are ambiguous, so we put the full name in the family-name
+    // slot and let FN handle the display.
     lines.push("N:" + esc(data.name) + ";;;;");
     if (data.tagline) lines.push("TITLE:" + esc(data.tagline));
     if (data.email) lines.push("EMAIL;TYPE=INTERNET:" + esc(data.email));
@@ -125,7 +128,7 @@
       return;
     }
 
-    // BOM 을 붙여야 일부 윈도우 주소록이 한글을 깨뜨리지 않습니다.
+    // The BOM is needed so some Windows address books don't mangle Korean text.
     var blob = new Blob(["﻿" + buildVcard(data)], {
       type: "text/vcard;charset=utf-8",
     });
@@ -138,7 +141,7 @@
     link.click();
     document.body.removeChild(link);
 
-    // revoke 를 즉시 하면 다운로드가 시작되기 전에 blob 이 사라질 수 있습니다.
+    // Revoking immediately could make the blob disappear before the download actually starts.
     setTimeout(function () {
       URL.revokeObjectURL(url);
     }, 1000);
@@ -146,7 +149,7 @@
     showToast(t("toast.vcard_saved", "연락처를 저장했어요"));
   }
 
-  // ─── 이벤트 ───────────────────────────────────────────────────────────────
+  // ─── Events ───────────────────────────────────────────────────────────────
 
   document.addEventListener("click", function (event) {
     var action = event.target.closest("[data-action]");
@@ -166,15 +169,15 @@
       var card = shareButton.closest(".pf-card");
       var link = card && card.querySelector(".pf-card__link");
       if (link) {
-        // 부제·배지가 함께 들어가지 않도록 첫 텍스트 노드만 씁니다.
+        // Use only the first text node so the subtitle/badge don't get pulled in too.
         var title = (link.firstChild && link.firstChild.textContent || "").trim();
         shareOrCopy(title || link.textContent.trim(), link.href);
       }
     }
   });
 
-  // 로컬 편집 UI 의 프리뷰와 테스트에서 재사용할 수 있도록 노출합니다.
-  // 페이지 동작 자체는 이 객체에 의존하지 않습니다.
+  // Exposed so the local editor UI's preview and tests can reuse these.
+  // The page's own behavior doesn't depend on this object.
   window.profileit = {
     buildVcard: buildVcard,
     readVcardData: readVcardData,

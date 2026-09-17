@@ -1,8 +1,8 @@
-//! `Config` 를 HTML 로 옮깁니다.
+//! Turns `Config` into HTML.
 //!
-//! maud 가 모든 문자열을 자동으로 이스케이프하므로, 설정 파일의 내용이 그대로
-//! 태그로 해석되는 일은 없습니다. 이스케이프를 건너뛰는 곳은 `PreEscaped` 로
-//! 감싼 내장 SVG 뿐이고, 그건 우리가 쓴 상수입니다.
+//! maud auto-escapes every string, so nothing from the config file ever gets
+//! interpreted as a tag. The only place that skips escaping is the built-in
+//! SVG wrapped in `PreEscaped`, and that's a constant we wrote ourselves.
 
 use maud::{html, Markup, DOCTYPE};
 
@@ -13,44 +13,45 @@ use crate::config::{
 use crate::i18n::{Strings, Text};
 use crate::{decor, icons, theme};
 
-/// 한 언어를 그리는 데 필요한 것들.
+/// Everything needed to render a single language.
 ///
-/// 언어 코드와 UI 문구를 함수마다 끌고 다니는 대신 묶었습니다. 렌더러의 거의
-/// 모든 함수가 둘 다 필요하기 때문입니다.
+/// Bundled together instead of passing the language code and UI strings
+/// separately to every function, since nearly every renderer function needs both.
 pub struct Ctx<'a> {
     pub config: &'a Config,
-    /// 지금 그리는 언어.
+    /// The language being rendered right now.
     pub lang: &'a str,
-    /// 번역이 빠졌을 때 돌아갈 언어.
+    /// Language to fall back to when a translation is missing.
     pub fallback: &'a str,
     pub strings: &'a Strings,
-    /// 언어 선택기에 넣을 (코드, 표시 이름, 출력 루트 기준 경로).
-    /// 경로는 기본 언어가 `""`, 나머지는 `"en/"` 같은 꼴입니다.
+    /// (code, display name, path relative to the output root) for the language switcher.
+    /// The path is `""` for the default language and something like `"en/"` for the rest.
     pub languages: &'a [(String, String, String)],
-    /// 이 페이지에서 출력 루트로 돌아가는 접두사. 기본 언어는 `""`,
-    /// 하위 디렉터리에 놓이는 언어는 `"../"`.
+    /// Prefix that gets this page back to the output root. `""` for the default
+    /// language, `"../"` for a language placed in a subdirectory.
     pub prefix: &'a str,
 }
 
 impl Ctx<'_> {
-    /// 번역 가능한 값을 지금 언어로 풉니다.
+    /// Resolves a translatable value in the current language.
     fn t<'t>(&self, text: &'t Text) -> &'t str {
         text.get(self.lang, self.fallback)
     }
 
-    /// 에셋 경로를 이 페이지 기준으로 바꿉니다.
+    /// Rewrites an asset path relative to this page.
     ///
-    /// 스타일시트·스크립트·이미지는 출력 루트에 한 벌만 두고 모든 언어판이
-    /// 공유합니다. 언어마다 복사하면 용량이 배로 늘고, 이미지를 바꿨을 때
-    /// 일부 언어판만 옛 파일을 가리키게 됩니다.
+    /// Stylesheets, scripts, and images live in a single copy at the output
+    /// root, shared by every language version. Copying them per language
+    /// would double the size, and updating an image would leave some
+    /// language versions pointing at the stale file.
     fn asset_path(&self, path: &str) -> String {
         format!("{}{}", self.prefix, path)
     }
 
-    /// 다른 언어판으로 가는 링크.
+    /// Link to another language version.
     fn relative_path(&self, path: &str) -> String {
         let joined = format!("{}{}", self.prefix, path);
-        // 같은 디렉터리의 index 를 가리킬 때 빈 href 는 유효하지 않습니다.
+        // An empty href isn't valid when pointing at the index of the same directory.
         if joined.is_empty() {
             "./".to_string()
         } else {
@@ -59,7 +60,7 @@ impl Ctx<'_> {
     }
 }
 
-/// 완성된 HTML 문서.
+/// The finished HTML document.
 pub fn page(ctx: &Ctx) -> String {
     let markup = html! {
         (DOCTYPE)
@@ -99,7 +100,7 @@ fn head(ctx: &Ctx) -> Markup {
                 link rel="canonical" href=(url);
                 meta property="og:url" content=(url);
             }
-            // 검색엔진에 같은 내용의 다른 언어판이 있음을 알립니다.
+            // Tells search engines that other-language versions of this content exist.
             @for (code, _, path) in ctx.languages {
                 link rel="alternate" hreflang=(code)
                     href=(absolute_url(canonical, path));
@@ -120,13 +121,13 @@ fn head(ctx: &Ctx) -> Markup {
                 meta name="twitter:card" content="summary";
             }
 
-            // 프리셋이 제공하는 주소 + 직접 넣은 주소. 중복은 제거됩니다.
+            // URLs from the preset plus any user-supplied ones. Duplicates are removed.
             @for url in config.theme.font.stylesheet_urls() {
                 link rel="stylesheet" href=(url);
             }
             link rel="stylesheet" href=(ctx.asset_path("styles.css"));
 
-            // 테마 토큰. styles.css 는 이 값들을 소비만 합니다.
+            // Theme tokens. styles.css only consumes these values.
             style { (theme_block(config)) }
         }
     }
@@ -136,8 +137,8 @@ fn theme_block(config: &Config) -> String {
     format!(":root {{\n{}}}\n", theme::css_variables(&config.theme))
 }
 
-/// `base_url` 이 있으면 절대 경로로, 없으면 상대 경로 그대로 둡니다.
-/// og:image 는 절대 경로가 아니면 대부분의 플랫폼이 무시합니다.
+/// Makes the path absolute if `base_url` is set; otherwise leaves it relative.
+/// Most platforms ignore og:image unless it's an absolute URL.
 fn absolute_url(base: Option<&str>, path: &str) -> String {
     match base {
         None => path.to_string(),
@@ -226,8 +227,9 @@ fn hero(ctx: &Ctx) -> Markup {
                     img class="pf-avatar" src=(ctx.asset_path(&avatar.0)) alt=""
                         width="96" height="96" decoding="async";
                 }
-                // 사진이 없으면 이름 첫 글자로 자리를 채웁니다. 장식이므로
-                // 낭독기에는 이름이 두 번 읽히지 않도록 숨깁니다.
+                // With no photo, fill the space with the name's first character.
+                // It's purely decorative, so it's hidden from screen readers
+                // to avoid the name being read out twice.
                 None => {
                     div class="pf-avatar pf-avatar--placeholder" aria-hidden="true" {
                         (first_grapheme(name))
@@ -287,13 +289,15 @@ fn social(social: &Social, ctx: &Ctx) -> Markup {
             span class="pf-sr-only" { (label) }
             svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" {
                 @match &social.icon {
-                    // 직접 넣은 아이콘이 있으면 플랫폼과 상관없이 그것을 씁니다.
-                    // 내장 글리프는 브랜드 마크를 흉내 낸 단순한 모양이라,
-                    // 진짜 로고를 쓰고 싶은 사람에게 길을 막지 않습니다.
+                    // A user-supplied icon always wins, regardless of platform.
+                    // The built-in glyphs are simple shapes that merely evoke
+                    // the brand mark, so this doesn't block anyone who wants
+                    // to use the real logo.
                     //
-                    // 파일은 `<image>` 로 참조합니다. 내용을 읽어 인라인으로
-                    // 넣으면 `currentColor` 가 먹지만, 남의 파일을 그대로
-                    // 펼쳐 넣는 셈이라 스크립트가 섞여 들어올 수 있습니다.
+                    // The file is referenced with `<image>`. Reading its
+                    // content and inlining it would let `currentColor` apply,
+                    // but that means unpacking someone else's file wholesale,
+                    // which could smuggle in a script.
                     Some(icon) => {
                         image href=(ctx.asset_path(&icon.0)) width="24" height="24" {}
                     }
@@ -305,7 +309,7 @@ fn social(social: &Social, ctx: &Ctx) -> Markup {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 섹션
+// Sections
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn section(section: &Section, ctx: &Ctx) -> Markup {
@@ -357,8 +361,9 @@ fn section_body(body: &SectionBody, ctx: &Ctx) -> Markup {
             ul class="pf-tags" {
                 @for tag in items {
                     li class="pf-tag" {
-                        // 이모지는 장식입니다. 낭독기가 "불꽃 요리" 처럼 읽으면
-                        // 오히려 방해가 되므로 접근성 트리에서 뺍니다.
+                        // Emoji here are decorative. Having a screen reader spell
+                        // out "fire cooking" would just get in the way, so it's
+                        // excluded from the accessibility tree.
                         @if let Some(icon) = tag.icon() {
                             span class="pf-tag__icon" aria-hidden="true" { (icon) }
                         }
@@ -408,7 +413,7 @@ fn timeline_item(item: &TimelineItem, ctx: &Ctx) -> Markup {
 }
 
 fn progress(done: usize, total: usize, ctx: &Ctx) -> Markup {
-    // 바에만 의존하지 않도록 숫자를 글로도 적습니다.
+    // Spell out the numbers in text too, so the bar isn't the only thing conveying them.
     let percent = if total == 0 { 0 } else { done * 100 / total };
     let label = ctx.strings.format(
         "checklist.progress",
@@ -441,10 +446,10 @@ fn checklist_item(item: &ChecklistItem, ctx: &Ctx) -> Markup {
                 }
             }
             span class="pf-checklist__text" {
-                // 취소선은 __label 에만 겁니다. 상위에 걸면 날짜 배지 앞
-                // 공백까지 선이 그어집니다.
+                // The strikethrough is scoped to __label only. Putting it on the
+                // parent would also strike through the space before the date badge.
                 span class="pf-checklist__label" {
-                    // 상태를 색과 취소선으로만 전하지 않습니다.
+                    // Don't convey the state through color and strikethrough alone.
                     @if item.done {
                         span class="pf-sr-only" { (ctx.strings.get("checklist.done_prefix")) }
                     }
@@ -475,8 +480,8 @@ fn link_card(item: &LinkItem, ctx: &Ctx) -> Markup {
                 img class="pf-card__thumb" src=(ctx.asset_path(&thumbnail.0)) alt=""
                     width="44" height="44" loading="lazy" decoding="async";
             }
-            // 공유 버튼은 <a> 의 형제입니다. 링크 안에 버튼을 넣으면 유효하지
-            // 않은 HTML 이고 키보드 순회가 깨집니다.
+            // The share button is a sibling of <a>, not nested inside it — putting
+            // a button inside a link is invalid HTML and breaks keyboard navigation.
             a class="pf-card__link" href=(item.url) target="_blank" rel="noopener noreferrer" {
                 (title)
                 @if let Some(badge) = &item.badge {
@@ -531,10 +536,11 @@ fn contact_row(item: &ContactItem, ctx: &Ctx) -> Markup {
     }
 }
 
-/// 언어 선택기. 언어가 하나뿐이면 아무것도 그리지 않습니다.
+/// Language switcher. Renders nothing when there's only one language.
 ///
-/// `<select>` 가 아니라 링크 목록인 이유: 각 언어판이 별도 정적 페이지라
-/// 자바스크립트 없이도 동작하고, 검색엔진이 따라갈 수 있습니다.
+/// Why a list of links instead of `<select>`: each language version is a
+/// separate static page, so this works without JavaScript and search
+/// engines can crawl it.
 fn language_switcher(ctx: &Ctx) -> Markup {
     if ctx.languages.len() < 2 {
         return html! {};
@@ -553,8 +559,8 @@ fn language_switcher(ctx: &Ctx) -> Markup {
     }
 }
 
-/// 브라우저에서 쓰는 문구. card.js 가 이 블록을 읽습니다 — 스크립트에 한국어를
-/// 박아두면 다른 언어판에서 토스트만 한국어로 나옵니다.
+/// Strings used in the browser. card.js reads this block — hardcoding Korean
+/// into the script would mean the toast shows up in Korean on every language version.
 fn client_strings(ctx: &Ctx) -> Markup {
     let json = serde_json::to_string(&ctx.strings.client_subset()).unwrap_or_else(|_| "{}".into());
     html! {
@@ -583,10 +589,10 @@ fn footer(ctx: &Ctx) -> Markup {
     }
 }
 
-/// vCard 생성용 데이터.
+/// Data for generating the vCard.
 ///
-/// 화면용 마크업을 긁는 것보다 이 블록을 읽는 쪽이 안전합니다 — 라벨을 바꾸거나
-/// 섹션을 숨겨도 연락처 저장이 계속 동작합니다.
+/// Reading this block is safer than scraping the display markup — contact
+/// saving keeps working even if labels change or a section gets hidden.
 fn vcard_data(ctx: &Ctx) -> Markup {
     let config = ctx.config;
     let mut email = None;
@@ -625,10 +631,10 @@ fn vcard_data(ctx: &Ctx) -> Markup {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 문자열 도우미
+// String helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 줄바꿈을 `<br>` 로 바꿉니다. 각 조각은 maud 가 이스케이프합니다.
+/// Turns line breaks into `<br>`. Each piece is escaped by maud.
 fn with_line_breaks(text: &str) -> Markup {
     html! {
         @for (i, line) in text.trim().lines().enumerate() {
@@ -638,7 +644,7 @@ fn with_line_breaks(text: &str) -> Markup {
     }
 }
 
-/// 빈 줄을 기준으로 문단을 나눕니다.
+/// Splits into paragraphs on blank lines.
 fn paragraphs(text: &str) -> Vec<&str> {
     text.split("\n\n")
         .map(str::trim)
@@ -646,15 +652,15 @@ fn paragraphs(text: &str) -> Vec<&str> {
         .collect()
 }
 
-/// 표시용으로 스킴을 뗍니다. 주소가 길면 카드 폭을 넘기기 때문입니다.
+/// Strips the scheme for display, since a long URL would overflow the card width.
 fn strip_scheme(url: &str) -> &str {
     url.trim_start_matches("https://")
         .trim_start_matches("http://")
         .trim_end_matches('/')
 }
 
-/// `tel:` 에는 숫자와 `+` 만 남깁니다. 공백이나 하이픈이 섞이면 일부
-/// 기기에서 전화 앱이 열리지 않습니다.
+/// Keeps only digits and `+` for `tel:`. Spaces or hyphens mixed in keep the
+/// phone app from opening on some devices.
 fn phone_href(value: &str) -> String {
     value
         .chars()
@@ -662,7 +668,7 @@ fn phone_href(value: &str) -> String {
         .collect()
 }
 
-/// 아바타 자리를 채울 첫 글자.
+/// First character used to fill the avatar placeholder.
 fn first_grapheme(name: &str) -> String {
     name.trim().chars().next().map(String::from).unwrap_or_default()
 }
@@ -672,11 +678,11 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    /// 소셜 아이콘을 만듭니다. 테스트에서 `Ctx` 를 통째로 짓기는 번거로워서
-    /// 렌더 결과만 보는 작은 도우미를 둡니다.
+    /// Builds a social icon. Constructing a whole `Ctx` in a test is tedious,
+    /// so this small helper just gives us the render output.
     fn social_html(icon: Option<&str>, prefix: &str) -> String {
         let strings = Strings::load("ko", Path::new(".")).unwrap_or_default();
-        // 이 테스트가 보는 것은 소셜 한 줄뿐이라 최소 설정이면 충분합니다.
+        // This test only looks at a single social row, so a minimal config is enough.
         let config: Config = toml::from_str(
             "schema_version = 1
 [site]
@@ -704,10 +710,10 @@ name = \"n\"
         social(&item, &ctx).into_string()
     }
 
-    /// 내장 글리프가 있는 플랫폼이어도 직접 넣은 아이콘이 이깁니다.
+    /// A supplied icon wins even for a platform with a built-in glyph.
     ///
-    /// 내장 아이콘은 브랜드 마크를 흉내 낸 단순한 모양이라, 진짜 로고를 쓰려는
-    /// 사람의 길을 막지 않아야 합니다.
+    /// The built-in icons are simple shapes that merely evoke the brand mark,
+    /// so they shouldn't stand in the way of someone who wants the real logo.
     #[test]
     fn supplied_icon_beats_the_builtin_glyph() {
         let html = social_html(Some("assets/github.svg"), "");
@@ -722,11 +728,12 @@ name = \"n\"
         assert!(html.contains("currentColor"), "{html}");
     }
 
-    /// 하위 디렉터리에 놓이는 언어판에서도 같은 파일을 가리켜야 합니다.
+    /// A language version placed in a subdirectory must still point at the same file.
     ///
-    /// 에셋은 출력 루트에 한 벌만 두므로 `/en/` 페이지는 `../` 를 거쳐야
-    /// 합니다. 접두사를 빼먹으면 기본 언어에서만 보이고 번역판에서 깨지는데,
-    /// 화면을 열어보기 전까지 모르는 종류의 고장입니다.
+    /// Assets live in a single copy at the output root, so an `/en/` page has
+    /// to go through `../`. Dropping the prefix would only show up on the
+    /// default language and break on translations — the kind of failure that
+    /// stays invisible until the page is actually opened.
     #[test]
     fn supplied_icon_follows_the_language_prefix() {
         let html = social_html(Some("assets/github.svg"), "../");
@@ -744,7 +751,7 @@ name = \"n\"
         assert_eq!(paragraphs("가\n\n나\n\n\n다"), vec!["가", "나", "다"]);
     }
 
-    /// 설정 파일 내용이 태그로 해석되면 안 됩니다.
+    /// Config file content must never be interpreted as a tag.
     #[test]
     fn user_text_is_escaped() {
         let html = with_line_breaks("<script>alert(1)</script>").into_string();

@@ -1,8 +1,9 @@
-//! 새 프로필 만들기.
+//! Creating a new profile.
 //!
-//! 빈 폴더에서 시작할 수 있어야 합니다 — 데스크톱 앱에서 "새 명함"을 고르면
-//! 이 함수가 불립니다. 예시 설정을 통째로 복사하지 않고 최소한만 적는 이유는,
-//! 처음 여는 사람이 자기 것으로 바꿔야 할 자리를 한눈에 보게 하기 위해서입니다.
+//! This needs to work starting from an empty folder — picking "New card" in
+//! the desktop app calls this function. We write a minimal config rather than
+//! copying a full example so that someone opening it for the first time can
+//! see at a glance exactly what needs to be filled in.
 
 use std::io;
 use std::path::Path;
@@ -97,8 +98,9 @@ remote = "origin"
 branch = "gh-pages"
 "##;
 
-/// `profile.toml` 을 만듭니다. 이미 있으면 **덮어쓰지 않습니다** — 실수로
-/// 내용을 날리는 것이 빈 폴더에서 시작하는 불편보다 훨씬 나쁩니다.
+/// Creates `profile.toml`. If it already exists, this **does not overwrite
+/// it** — accidentally wiping someone's content is far worse than the
+/// inconvenience of having to start from an empty folder.
 pub fn init(path: &Path) -> io::Result<()> {
     if path.exists() {
         return Err(io::Error::new(
@@ -120,8 +122,9 @@ pub fn init(path: &Path) -> io::Result<()> {
 mod tests {
     use super::*;
 
-    /// 시작 파일이 곧바로 검증을 통과해야 합니다. 새로 만든 프로필이
-    /// 오류부터 뱉으면 처음 쓰는 사람이 바로 막힙니다.
+    /// The starter file must pass validation right out of the box. If a
+    /// freshly created profile immediately throws errors, first-time users
+    /// get stuck before they even start.
     #[test]
     fn starter_config_is_valid() {
         let config: crate::config::Config =

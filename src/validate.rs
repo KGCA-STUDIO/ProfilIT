@@ -1,8 +1,9 @@
-//! 설정 검증.
+//! Config validation.
 //!
-//! 렌더러와 별개로 존재하는 이유는, 편집 경로가 늘어나도 검증 규칙은 하나여야
-//! 하기 때문입니다. CLI 의 `check` 명령, 로컬 편집 UI 의 저장 버튼, 나중에 붙일
-//! 브라우저 관리자 모드가 전부 이 함수를 재사용합니다.
+//! This lives separately from the renderer so that no matter how many editing
+//! paths we add, there's still just one set of validation rules. The CLI's
+//! `check` command, the save button in the local editor UI, and whatever
+//! browser-based admin mode gets bolted on later all reuse this same function.
 
 use std::path::Path;
 
@@ -15,21 +16,22 @@ use crate::message::Message;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
-    /// 빌드를 중단시킵니다.
+    /// Stops the build.
     Error,
-    /// 빌드는 되지만 의도한 결과가 아닐 가능성이 큽니다.
+    /// The build still succeeds, but this is probably not what was intended.
     Warning,
 }
 
-/// 하나의 문제.
+/// A single issue.
 ///
-/// 문장이 아니라 **키와 인자**를 들고 있습니다. 어느 언어로 보여줄지는
-/// 화면에 내보내는 쪽이 정합니다 — 검증기가 한국어 문장을 만들어 버리면
-/// 편집기를 영어로 바꿔도 진단만 한국어로 남습니다.
+/// This carries a **key and arguments**, not a finished sentence. Whichever
+/// side renders it decides the language — if the validator baked in Korean
+/// sentences directly, switching the editor to English would still leave
+/// diagnostics stuck in Korean.
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
-    /// 문제가 난 위치를 TOML 경로처럼 표기합니다. 예: `sections[2].items[0].url`
+    /// The location of the issue, written like a TOML path, e.g. `sections[2].items[0].url`
     pub path: String,
     pub message: Message,
 }
@@ -52,7 +54,7 @@ impl Diagnostic {
     }
 }
 
-/// `root` 는 에셋 상대 경로의 기준 디렉터리(보통 `profile.toml` 이 있는 곳)입니다.
+/// `root` is the base directory that asset paths are relative to (usually wherever `profile.toml` lives).
 pub fn validate(config: &Config, root: &Path) -> Vec<Diagnostic> {
     let mut out = Vec::new();
 
@@ -68,20 +70,24 @@ pub fn validate(config: &Config, root: &Path) -> Vec<Diagnostic> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 언어
+// Languages
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 선언한 언어마다 문구 파일이 있는지, 번역이 얼마나 빠졌는지 봅니다.
+/// Checks that a strings file exists for every declared language, and how much
+/// translation is missing.
 ///
-/// 빠진 번역은 **언어당 한 건**으로 모아서 알립니다. 항목마다 경고를 내면
-/// 언어 하나 추가했을 때 수십 줄이 쏟아져 정작 중요한 오류가 묻힙니다.
+/// Missing translations are rolled up into **one diagnostic per language**.
+/// Warning on every individual missing string would flood the output with
+/// dozens of lines the moment someone adds a new language, burying the errors
+/// that actually matter.
 fn check_languages(config: &Config, root: &Path, out: &mut Vec<Diagnostic>) {
     let languages = config.languages();
     let default_lang = config.default_language();
 
     for lang in &languages {
-        // 구체적인 실패 이유(파일 없음·파싱 오류)는 여기서 뭉뚱그립니다.
-        // 사용자가 할 일은 어느 쪽이든 같습니다 — 그 언어 파일을 만드는 것.
+        // We collapse the specific failure reason (missing file vs. parse error)
+        // here — either way, what the user needs to do is the same: create that
+        // language's strings file.
         if i18n::Strings::load(lang, root).is_err() {
             out.push(Diagnostic::error(
                 format!("site.languages ({lang})"),
@@ -130,10 +136,11 @@ fn check_languages(config: &Config, root: &Path, out: &mut Vec<Diagnostic>) {
     }
 }
 
-/// 번역 가능한 값 전부를 TOML 경로와 함께 모읍니다.
+/// Collects every translatable value along with its TOML path.
 ///
-/// 새 `Text` 필드를 스키마에 넣으면 **여기에도 추가해야 합니다.** 빠뜨리면
-/// 번역 누락이 보고되지 않고 조용히 기본 언어로 나갑니다.
+/// If you add a new `Text` field to the schema, **you must add it here too.**
+/// Miss this and missing translations won't be reported — they'll just
+/// silently fall back to the default language.
 fn collect_texts<'a>(config: &'a Config) -> Vec<(String, &'a Text)> {
     let mut texts: Vec<(String, &'a Text)> = Vec::new();
 
@@ -242,19 +249,19 @@ pub fn has_errors(diagnostics: &[Diagnostic]) -> bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 섹션 키 린트
+// Section key linting
 //
-// `Section` 은 공통 필드와 타입별 본문을 `#[serde(flatten)]` 으로 합치는데,
-// serde 는 flatten 과 `deny_unknown_fields` 를 함께 쓸 수 없습니다. 그래서
-// 섹션의 오타는 파싱에서 걸러지지 않고 조용히 무시됩니다. 원본 TOML 을 한 번 더
-// 훑어서 그 구멍을 메웁니다.
+// `Section` merges common fields with a type-specific body via
+// `#[serde(flatten)]`, but serde can't combine flatten with
+// `deny_unknown_fields`. That means typos in section keys slip past parsing
+// and get silently ignored. We patch that hole by re-scanning the raw TOML.
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub fn lint_section_keys(source: &str) -> Vec<Diagnostic> {
     let mut out = Vec::new();
 
     let Ok(table) = source.parse::<toml::Table>() else {
-        // 파싱이 실패하는 경우는 호출자가 이미 보고했습니다.
+        // If parsing fails, the caller has already reported it.
         return out;
     };
     let Some(sections) = table.get("sections").and_then(|v| v.as_array()) else {
@@ -266,7 +273,7 @@ pub fn lint_section_keys(source: &str) -> Vec<Diagnostic> {
             continue;
         };
         let Some(type_name) = section.get("type").and_then(|v| v.as_str()) else {
-            continue; // type 누락은 파싱 단계에서 이미 오류입니다.
+            continue; // A missing `type` is already caught as an error during parsing.
         };
 
         let body_keys = SectionBody::body_keys(type_name);
@@ -285,7 +292,7 @@ pub fn lint_section_keys(source: &str) -> Vec<Diagnostic> {
     out
 }
 
-// ─── 섹션별 검사 ─────────────────────────────────────────────────────────────
+// ─── Per-section checks ──────────────────────────────────────────────────────
 
 fn check_schema_version(config: &Config, out: &mut Vec<Diagnostic>) {
     if config.schema_version != SCHEMA_VERSION {
@@ -358,7 +365,7 @@ fn check_section(
     default_lang: &str,
     out: &mut Vec<Diagnostic>,
 ) {
-    // 이모지 한 글자를 의도한 필드라 길면 레이아웃이 밀립니다.
+    // This field is meant to hold a single emoji; anything longer pushes the layout out of shape.
     if let Some(icon) = &section.icon {
         if icon.chars().count() > 2 {
             out.push(Diagnostic::warning(
@@ -414,7 +421,7 @@ fn check_section(
                         "msg.checklist.textEmpty",
                     ));
                 }
-                // 달성 표시가 없는데 날짜가 있으면 둘 중 하나가 실수입니다.
+                // A date with no "done" flag suggests one of the two is a mistake.
                 if !item.done && item.date.is_some() {
                     out.push(Diagnostic::warning(
                         format!("{path}.date"),
@@ -492,8 +499,8 @@ fn check_section(
     }
 }
 
-/// kind 에 맞는 값 형식인지 봅니다. 렌더러가 mailto:/tel: 로 감싸기 때문에,
-/// 형식이 틀리면 클릭해도 아무 일이 일어나지 않는 링크가 만들어집니다.
+/// Checks that the value's format matches its kind. The renderer wraps it in
+/// mailto:/tel:, so a bad format produces a link that does nothing when clicked.
 fn check_contact_item(
     base: &str,
     item: &ContactItem,
@@ -512,8 +519,8 @@ fn check_contact_item(
 
     match item.kind {
         ContactKind::Email => {
-            // 전수 검사는 하지 않습니다. 오타를 잡는 것이 목적이라
-            // @ 앞뒤에 내용이 있는지만 봅니다.
+            // We're not doing a full validation here. The goal is just to catch
+            // typos, so we only check that there's content on both sides of the @.
             let parts: Vec<&str> = value.split('@').collect();
             let looks_like_email =
                 parts.len() == 2 && !parts[0].is_empty() && parts[1].contains('.');
@@ -602,8 +609,9 @@ fn check_theme(config: &Config, root: &Path, out: &mut Vec<Diagnostic>) {
 }
 
 fn check_font(font: &Font, out: &mut Vec<Diagnostic>) {
-    // custom 프리셋은 스택을 직접 줘야 합니다 — 안 주면 기기 기본 글꼴로
-    // 조용히 되돌아가서, 폰트를 바꿨는데 아무것도 안 바뀌는 것처럼 보입니다.
+    // The custom preset requires an explicit font stack — without one it
+    // silently falls back to the device's default font, making it look like
+    // changing the font had no effect at all.
     if font.preset == FontPreset::Custom && font.family.is_none() {
         out.push(Diagnostic::error(
             "theme.font.family",
@@ -617,7 +625,7 @@ fn check_font(font: &Font, out: &mut Vec<Diagnostic>) {
         ));
     }
 
-    // 프리셋을 골랐는데 family 도 적으면 둘 중 하나는 무시되므로 알려줍니다.
+    // If both a preset and a family are set, one of them gets ignored — flag it.
     if font.preset != FontPreset::Custom && font.family.is_some() {
         out.push(Diagnostic::warning(
             "theme.font.family",
@@ -643,8 +651,8 @@ fn check_font(font: &Font, out: &mut Vec<Diagnostic>) {
         }
     }
 
-    // 제목에 쓰는 굵기가 실제로 그 폰트에 있는지 봅니다. 없으면 브라우저가
-    // 합성 볼드로 억지로 굵게 그려서 글자 모양이 뭉개집니다.
+    // Checks whether the heading weight actually exists in that font. If not,
+    // the browser fakes it with synthetic bold, which distorts the glyph shapes.
     let heading_font = font.heading_preset.unwrap_or(font.preset);
     let weights = heading_font.available_weights();
     if !weights.is_empty() && !weights.contains(&font.heading_weight) {
@@ -682,10 +690,11 @@ fn check_font(font: &Font, out: &mut Vec<Diagnostic>) {
     }
 }
 
-// ─── 공통 검사 ───────────────────────────────────────────────────────────────
+// ─── Shared checks ────────────────────────────────────────────────────────────
 
-/// 허용 스킴만 통과시킵니다. `javascript:` 같은 스킴이 링크로 들어가면
-/// 생성된 페이지에 그대로 실행 가능한 코드가 박히므로 여기서 막습니다.
+/// Only lets allowed schemes through. If a scheme like `javascript:` made it
+/// into a link, it would end up as executable code embedded in the generated
+/// page, so we block it here.
 fn check_url(path: &str, url: &str, out: &mut Vec<Diagnostic>) {
     const ALLOWED: [&str; 4] = ["https://", "http://", "mailto:", "tel:"];
 
@@ -710,8 +719,8 @@ fn check_url(path: &str, url: &str, out: &mut Vec<Diagnostic>) {
     }
 }
 
-/// `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` 를 검사합니다.
-/// `#` 으로 시작하지 않으면 CSS 함수나 키워드로 보고 통과시킵니다.
+/// Checks `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` formats.
+/// Anything not starting with `#` is assumed to be a CSS function or keyword and passed through.
 fn check_color(path: &str, color: &str, out: &mut Vec<Diagnostic>) {
     let trimmed = color.trim();
     if trimmed.is_empty() {
@@ -732,11 +741,12 @@ fn check_color(path: &str, color: &str, out: &mut Vec<Diagnostic>) {
     }
 }
 
-/// 숫자 + 단위 형태인지 봅니다. `0` 은 단위 없이도 유효합니다.
+/// Checks for a number-plus-unit shape. `0` is valid with no unit.
 ///
-/// CSS 길이값을 전부 파싱하지는 않습니다(`calc()` 등). 목적은 `"22"` 처럼 단위를
-/// 빠뜨린 값을 잡는 것입니다 — 단위 없는 값은 CSS 가 통째로 무시해서, 무늬
-/// 크기나 글자 크기를 바꿨는데 화면이 그대로인 상황을 만듭니다.
+/// This doesn't fully parse every CSS length form (e.g. `calc()`). The goal is
+/// just to catch values like `"22"` that are missing a unit — CSS ignores
+/// unitless values entirely, which makes it look like changing a pattern size
+/// or font size had no effect.
 fn check_css_length(path: &str, value: &str, out: &mut Vec<Diagnostic>) {
     const UNITS: [&str; 8] = ["px", "rem", "em", "%", "vw", "vh", "pt", "ch"];
 
@@ -745,7 +755,7 @@ fn check_css_length(path: &str, value: &str, out: &mut Vec<Diagnostic>) {
         out.push(Diagnostic::error(path, "msg.length.empty"));
         return;
     }
-    // calc() 같은 함수 표기는 통과시킵니다.
+    // Function notation like calc() is passed through.
     if trimmed.contains('(') {
         return;
     }

@@ -1,7 +1,8 @@
-//! `dist/` 를 만듭니다.
+//! Builds `dist/`.
 //!
-//! 출력은 정적 파일 셋뿐입니다 — `index.html`, `styles.css`, `card.js`, 그리고
-//! 설정이 참조하는 에셋. 서버가 필요 없고 GitHub Pages 에 그대로 올라갑니다.
+//! The output is just a set of static files — `index.html`, `styles.css`,
+//! `card.js`, plus whatever assets the config references. No server needed;
+//! it can be dropped straight onto GitHub Pages.
 
 use std::fs;
 use std::io;
@@ -11,8 +12,9 @@ use crate::config::{AssetPath, Config, Decoration, SectionBody};
 use crate::i18n::{self, Strings};
 use crate::render::{self, Ctx};
 
-/// 스타일시트와 스크립트는 바이너리에 박아 넣습니다. 설치한 사람이 파일을
-/// 따로 챙기지 않아도 되고, 버전이 어긋날 일도 없습니다.
+/// The stylesheet and script are embedded straight into the binary, so
+/// whoever installs this doesn't need to keep the files around separately,
+/// and there's no risk of the version drifting out of sync.
 const STYLES: &str = include_str!("../static/styles.css");
 const SCRIPT: &str = include_str!("../static/card.js");
 
@@ -23,8 +25,8 @@ pub struct Output {
 }
 
 pub fn build(config: &Config, root: &Path, dist: &Path) -> io::Result<Output> {
-    // 이전 결과가 남아 섞이지 않도록 비우고 시작합니다. 지우는 범위는 우리가
-    // 만든 dist 뿐이고, 없으면 그냥 넘어갑니다.
+    // Start clean so leftovers from a previous build don't get mixed in. We
+    // only ever remove the dist dir we created, and skip this if it's absent.
     if dist.exists() {
         fs::remove_dir_all(dist)?;
     }
@@ -33,7 +35,8 @@ pub fn build(config: &Config, root: &Path, dist: &Path) -> io::Result<Output> {
     let languages = config.languages();
     let default_lang = config.default_language();
 
-    // 선택기에 넣을 (코드, 표시 이름, 경로). 기본 언어가 루트에 놓입니다.
+    // (code, display name, path) entries for the language selector. The
+    // default language lives at the root.
     let entries: Vec<(String, String, String)> = languages
         .iter()
         .map(|lang| {
@@ -73,10 +76,11 @@ pub fn build(config: &Config, root: &Path, dist: &Path) -> io::Result<Output> {
         fs::write(dir.join("index.html"), &html)?;
     }
 
-    // 스타일시트·스크립트·에셋은 루트에 한 벌만 두고 모든 언어판이 공유합니다.
+    // The stylesheet, script, and assets live in one copy at the root and are
+    // shared by every language version.
     fs::write(dist.join("styles.css"), STYLES)?;
 
-    // 버튼이 하나도 없으면 스크립트를 받을 이유가 없습니다.
+    // No point shipping the script if there's no button that needs it.
     if config.features.share_menu || config.features.vcard_download {
         fs::write(dist.join("card.js"), SCRIPT)?;
     }
@@ -100,10 +104,10 @@ pub fn build(config: &Config, root: &Path, dist: &Path) -> io::Result<Output> {
     })
 }
 
-/// 설정이 참조하는 모든 파일. 검증에서 존재가 확인된 것들입니다.
+/// Every file the config references. Validation has already confirmed these exist.
 ///
-/// 새 에셋 필드를 스키마에 넣으면 **여기에도 추가해야 합니다.** 빠뜨리면
-/// 로컬에서는 멀쩡하고 배포한 곳에서만 그림이 깨집니다.
+/// If you add a new asset field to the schema, **you must add it here too.**
+/// Miss this and it'll work fine locally but images will break wherever it's deployed.
 fn collect_assets(config: &Config) -> Vec<&AssetPath> {
     let mut assets: Vec<&AssetPath> = Vec::new();
 
@@ -131,7 +135,7 @@ fn collect_assets(config: &Config) -> Vec<&AssetPath> {
         assets.extend(bottom.as_ref());
     }
 
-    // 같은 파일을 두 곳에서 쓰면 한 번만 복사합니다.
+    // If the same file is used in two places, only copy it once.
     let mut seen = Vec::new();
     assets.retain(|asset| {
         if seen.contains(&asset.0.as_str()) {
@@ -145,7 +149,7 @@ fn collect_assets(config: &Config) -> Vec<&AssetPath> {
     assets
 }
 
-/// 기본 출력 경로. 설정 파일이 있는 곳 옆에 만듭니다.
+/// The default output path, created next to the config file.
 pub fn default_dist(config_path: &Path) -> PathBuf {
     crate::project_root(config_path).join("dist")
 }

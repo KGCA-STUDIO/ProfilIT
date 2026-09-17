@@ -1,5 +1,7 @@
 # ProfileIT
 
+*[English](README.en.md)*
+
 섹션 기반 온라인 명함을 만드는 정적 사이트 생성기. 설정 파일 하나를 고치면
 `dist/` 에 정적 파일 셋이 나오고, GitHub Pages 같은 곳에 그대로 올라갑니다.
 
@@ -262,4 +264,4 @@ cargo test
 
 ## 라이선스
 
-MIT
+GPL-3.0-or-later. 전문은 [`LICENSE`](LICENSE)에 있습니다.

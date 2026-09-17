@@ -1,17 +1,17 @@
-//! 배경 장식 프리셋.
+//! Background decoration presets.
 //!
-//! 순수 장식이라 렌더러가 `aria-hidden="true"` 로 감싸고, CSS 에서
-//! `pointer-events: none` 이 걸립니다. 화면 낭독기에는 아무것도 전달되지
-//! 않아야 합니다 — 의미가 없는 그림이기 때문입니다.
+//! These are purely decorative, so the renderer wraps them in
+//! `aria-hidden="true"` and CSS applies `pointer-events: none`. Nothing here
+//! should ever reach a screen reader — the artwork carries no meaning.
 //!
-//! 프리셋을 추가하려면 `DecorationPreset` 에 변형을 넣고 아래 두 함수에
-//! 갈래를 더하면 됩니다.
+//! To add a preset, add a variant to `DecorationPreset` and a matching branch
+//! in each of the two functions below.
 
 use maud::{Markup, PreEscaped};
 
 use crate::config::DecorationPreset;
 
-/// 화면 위쪽 장식. `viewBox="0 0 400 190"` 기준입니다.
+/// Decoration for the top of the screen. Based on `viewBox="0 0 400 190"`.
 pub fn top(preset: DecorationPreset) -> Markup {
     let body = match preset {
         DecorationPreset::Confetti => {
@@ -28,7 +28,7 @@ pub fn top(preset: DecorationPreset) -> Markup {
     PreEscaped(body.to_string())
 }
 
-/// 화면 아래쪽 장식. `viewBox="0 0 400 150"` 기준입니다.
+/// Decoration for the bottom of the screen. Based on `viewBox="0 0 400 150"`.
 pub fn bottom(preset: DecorationPreset) -> Markup {
     let body = match preset {
         DecorationPreset::Confetti => {

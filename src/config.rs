@@ -1,18 +1,19 @@
-//! `profile.toml` 의 스키마 정의.
+//! Schema definition for `profile.toml`.
 //!
-//! 이 모듈은 **편집 방식에 의존하지 않습니다.** 로컬 편집 UI, 정적 렌더러,
-//! 나중에 붙일 브라우저 관리자 모드가 모두 같은 타입을 공유합니다. 새 필드를
-//! 넣을 때는 `#[serde(default)]` 를 붙여 기존 파일이 계속 읽히도록 하고,
-//! 호환되지 않는 변경에만 `SCHEMA_VERSION` 을 올리고 마이그레이션을 추가하세요.
+//! This module **does not depend on any particular editing method.** The local
+//! editing UI, the static renderer, and a browser-based admin mode to be added
+//! later all share the same types. When adding a new field, attach
+//! `#[serde(default)]` so existing files keep loading, and only bump
+//! `SCHEMA_VERSION` and add a migration for breaking changes.
 
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Text;
 
-/// 이 바이너리가 읽을 수 있는 스키마 버전.
+/// Schema version this binary can read.
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// 에셋 경로. `profile.toml` 이 있는 디렉터리 기준 상대 경로입니다.
+/// Asset path. Relative to the directory containing `profile.toml`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct AssetPath(pub String);
@@ -22,7 +23,7 @@ fn default_true() -> bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 루트
+// Root
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -33,7 +34,7 @@ pub struct Config {
     pub profile: Profile,
     #[serde(default)]
     pub socials: Vec<Social>,
-    /// 배열 순서가 화면 순서입니다.
+    /// Array order is display order.
     #[serde(default)]
     pub sections: Vec<Section>,
     #[serde(default)]
@@ -47,15 +48,17 @@ pub struct Config {
 }
 
 impl Config {
-    /// 화면에 실제로 렌더링될 섹션만 순서대로 돌려줍니다.
+    /// Returns, in order, only the sections that actually render on screen.
     pub fn visible_sections(&self) -> impl Iterator<Item = &Section> {
         self.sections.iter().filter(|s| s.enabled)
     }
 
-    /// 생성할 언어들. **기본 언어가 항상 맨 앞**이고 중복은 제거됩니다.
+    /// Languages to build. **The default language always comes first** and
+    /// duplicates are removed.
     ///
-    /// 맨 앞 언어가 사이트 최상단(`/`)에 놓이므로 순서가 곧 배치입니다.
-    /// `languages` 에 기본 언어를 빠뜨리는 실수가 잦아서 여기서 보정합니다.
+    /// The first language ends up at the site root (`/`), so order here is
+    /// layout. People often forget to list the default language in
+    /// `languages`, so we patch that up here.
     pub fn languages(&self) -> Vec<String> {
         let mut langs = vec![self.site.lang.clone()];
         for lang in &self.site.languages {
@@ -66,31 +69,31 @@ impl Config {
         langs
     }
 
-    /// 기본 언어. 번역이 빠졌을 때 돌아갈 곳입니다.
+    /// Default language. Where we fall back to when a translation is missing.
     pub fn default_language(&self) -> &str {
         &self.site.lang
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 사이트 메타데이터
+// Site metadata
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Site {
-    /// `<title>` 및 og:title.
+    /// `<title>` and og:title.
     pub title: Text,
     #[serde(default)]
     pub description: Option<Text>,
-    /// 배포 주소. og:url / canonical 을 절대 경로로 만들 때 필요합니다.
+    /// Deployed URL. Needed to make og:url / canonical absolute.
     #[serde(default)]
     pub base_url: Option<String>,
-    /// 기본 언어. 이 언어가 사이트 최상단(`/`)에 놓입니다.
+    /// Default language. This is the one that lands at the site root (`/`).
     #[serde(default = "default_lang")]
     pub lang: String,
-    /// 생성할 언어 목록. 비우면 기본 언어 하나만 만듭니다.
-    /// 기본 언어가 빠져 있으면 렌더러가 맨 앞에 넣습니다.
+    /// Languages to build. Leave empty to build only the default language.
+    /// If the default language is missing here, the renderer adds it at the front.
     #[serde(default)]
     pub languages: Vec<String>,
     #[serde(default)]
@@ -104,28 +107,28 @@ fn default_lang() -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 프로필 (명함 상단)
+// Profile (top of the card)
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
     pub name: Text,
-    /// 이름 아래 한 줄. 직함이나 짧은 소개.
+    /// One line under the name. A title or short intro.
     #[serde(default)]
     pub tagline: Option<Text>,
-    /// 여러 줄 허용. 렌더러가 줄바꿈을 `<br>` 로 변환합니다.
+    /// Multiple lines allowed. The renderer turns line breaks into `<br>`.
     #[serde(default)]
     pub bio: Option<Text>,
     #[serde(default)]
     pub avatar: Option<AssetPath>,
-    /// "서울" 처럼 짧은 지역 표기.
+    /// Short location, e.g. "Seoul".
     #[serde(default)]
     pub location: Option<Text>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 소셜
+// Socials
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -133,23 +136,24 @@ pub struct Profile {
 pub struct Social {
     pub platform: Platform,
     pub url: String,
-    /// 스크린리더용 라벨. 생략하면 플랫폼 이름을 씁니다.
+    /// Screen-reader label. Falls back to the platform name if omitted.
     #[serde(default)]
     pub label: Option<Text>,
-    /// 직접 넣을 아이콘(SVG) 경로.
+    /// Path to a custom icon (SVG).
     ///
-    /// 어느 플랫폼에나 쓸 수 있습니다 — 내장 글리프는 브랜드 마크를 흉내 낸
-    /// 단순한 모양이라, 진짜 로고를 쓰고 싶으면 여기에 파일을 지정하면
-    /// 그쪽이 이깁니다. `platform` 이 `custom` 이면 내장 글리프가 없으므로
-    /// 필수입니다.
+    /// Works for any platform — the built-in glyphs are simple shapes that
+    /// merely gesture at the brand mark, so if you want the real logo, point
+    /// this at a file and it wins. Required when `platform` is `custom`,
+    /// since there's no built-in glyph for that.
     #[serde(default)]
     pub icon: Option<AssetPath>,
 }
 
-/// 내장 아이콘이 있는 플랫폼 목록.
+/// Platforms that ship with a built-in icon.
 ///
-/// 아이콘을 추가하려면 여기에 변형을 넣고 `icons.rs` 에 SVG 를 등록하면 됩니다.
-/// 기여자가 가장 쉽게 PR 할 수 있는 지점이라 일부러 열어둔 구조입니다.
+/// To add an icon, add a variant here and register the SVG in `icons.rs`.
+/// This is deliberately left open as the easiest place for a contributor to
+/// send a PR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Platform {
@@ -166,13 +170,14 @@ pub enum Platform {
     Linkedin,
     Email,
     Rss,
-    /// 내장 목록에 없는 경우. `icon` 필드가 함께 있어야 합니다.
+    /// Not in the built-in list. Must be paired with an `icon` field.
     Custom,
 }
 
 impl Platform {
-    /// locale 파일의 키. 표시 이름은 `locales/<코드>.json` 이 정합니다 —
-    /// "네이버"/"Naver" 처럼 언어마다 달라져야 하기 때문입니다.
+    /// Key into the locale files. The display name comes from
+    /// `locales/<code>.json` — it needs to vary per language, e.g.
+    /// "네이버" vs "Naver".
     pub fn locale_key(self) -> &'static str {
         match self {
             Platform::Instagram => "platform.instagram",
@@ -194,23 +199,24 @@ impl Platform {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 섹션
+// Sections
 //
-// 공통 필드(title·icon·enabled)를 바깥에 두고 `type` 별 본문만 flatten 으로
-// 붙입니다. serde 는 `flatten` 과 `deny_unknown_fields` 를 함께 쓸 수 없어서
-// 섹션에서는 오타를 파싱 단계에서 잡지 못합니다. 대신 `validate::lint_section_keys`
-// 가 원본 TOML 을 다시 훑어 알 수 없는 키를 경고로 보고합니다.
+// The fields shared by every section (title / icon / enabled) live at the top
+// level, and each `type`'s own body is flattened in. serde won't let you
+// combine `flatten` with `deny_unknown_fields`, so typos in a section body
+// can't be caught at parse time. Instead, `validate::lint_section_keys`
+// re-scans the raw TOML and reports unknown keys as warnings.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Section {
-    /// 섹션 제목. 생략하면 제목 없이 본문만 렌더링됩니다.
+    /// Section title. If omitted, only the body renders, with no heading.
     #[serde(default)]
     pub title: Option<Text>,
-    /// 제목 앞에 붙는 이모지 한 글자.
+    /// Single emoji shown before the title.
     #[serde(default)]
     pub icon: Option<String>,
-    /// false 면 파일에는 남고 화면에서만 빠집니다.
+    /// If false, the section stays in the file but is dropped from the page.
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(flatten)]
@@ -220,27 +226,27 @@ pub struct Section {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SectionBody {
-    /// 자유 문단. 자기소개, 하는 일.
+    /// Free-form paragraph. Bio, what you do.
     About { body: Text },
-    /// 학력·경력처럼 시간순으로 쌓이는 항목.
+    /// Chronological entries, like education or work history.
     Timeline { items: Vec<TimelineItem> },
-    /// 버킷리스트. 달성 여부를 체크합니다.
+    /// Bucket list. Tracks whether each item is done.
     Checklist {
         items: Vec<ChecklistItem>,
-        /// 상단에 진행률 바를 표시합니다.
+        /// Show a progress bar at the top.
         #[serde(default = "default_true")]
         show_progress: bool,
     },
-    /// 관심사·기술 같은 짧은 키워드 묶음.
+    /// Short keyword group, e.g. interests or skills.
     Tags { items: Vec<Tag> },
-    /// 링크 카드 목록.
+    /// List of link cards.
     Links { items: Vec<LinkItem> },
-    /// 이메일·전화 같은 연락 수단.
+    /// Contact methods like email or phone.
     Contact { items: Vec<ContactItem> },
 }
 
 impl SectionBody {
-    /// 해당 타입이 쓰는 본문 키 목록. 키 린트의 기준입니다.
+    /// The body keys a given type uses. This is what the key linter checks against.
     pub fn body_keys(type_name: &str) -> &'static [&'static str] {
         match type_name {
             "about" => &["body"],
@@ -253,13 +259,13 @@ impl SectionBody {
         }
     }
 
-    /// 모든 섹션이 공통으로 쓰는 키.
+    /// Keys shared by every section type.
     pub const COMMON_KEYS: &'static [&'static str] = &["type", "title", "icon", "enabled"];
 }
 
-/// 관심사 태그.
+/// An interest tag.
 ///
-/// 이모지가 필요 없으면 문자열(또는 번역 표) 그대로 씁니다.
+/// If you don't need an emoji, a plain string (or translation table) works fine.
 ///
 /// ```toml
 /// items = [
@@ -269,8 +275,8 @@ impl SectionBody {
 /// ]
 /// ```
 ///
-/// `WithIcon` 이 **먼저** 와야 합니다. 순서를 바꾸면 `{ icon = ..., text = ... }`
-/// 가 언어 코드 `icon`·`text` 를 가진 번역 표로 잘못 읽힙니다.
+/// `WithIcon` must come **first**. Swap the order and `{ icon = ..., text = ... }`
+/// gets misread as a translation table with language codes `icon` and `text`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Tag {
@@ -294,43 +300,43 @@ impl Tag {
     }
 }
 
-/// 학력·경력 항목.
+/// An education/work history entry.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TimelineItem {
     pub title: Text,
-    /// "2018 – 2022" 처럼 자유 형식입니다. 정렬에 쓰지 않으므로 형식을 강제하지
-    /// 않습니다 — 배열 순서가 곧 표시 순서입니다.
+    /// Free-form, e.g. "2018 – 2022". Not used for sorting, so no format is
+    /// enforced — array order is display order.
     #[serde(default)]
     pub period: Option<Text>,
-    /// 소속이나 학위 같은 부제.
+    /// Subtitle, e.g. affiliation or degree.
     #[serde(default)]
     pub subtitle: Option<Text>,
     #[serde(default)]
     pub description: Option<Text>,
-    /// 있으면 제목이 링크가 됩니다.
+    /// If set, the title becomes a link.
     #[serde(default)]
     pub url: Option<String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
 
-/// 버킷리스트 항목.
+/// A bucket-list item.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChecklistItem {
     pub text: Text,
     #[serde(default)]
     pub done: bool,
-    /// 달성 시점. "2025-04" 처럼 자유 형식입니다.
+    /// Date achieved. Free-form, e.g. "2025-04".
     #[serde(default)]
     pub date: Option<Text>,
-    /// 한 줄 후기.
+    /// A one-line note.
     #[serde(default)]
     pub note: Option<Text>,
 }
 
-/// 링크 카드.
+/// A link card.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LinkItem {
@@ -342,23 +348,23 @@ pub struct LinkItem {
     pub thumbnail: Option<AssetPath>,
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// 미세한 흔들림 애니메이션. `prefers-reduced-motion` 을 존중합니다.
+    /// Subtle wiggle animation. Respects `prefers-reduced-motion`.
     #[serde(default)]
     pub highlight: bool,
-    /// NEW, 공지 같은 짧은 배지 텍스트.
+    /// Short badge text, e.g. "NEW" or an announcement.
     #[serde(default)]
     pub badge: Option<Text>,
 }
 
-/// 연락 수단.
+/// A contact method.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContactItem {
     pub kind: ContactKind,
-    /// 이메일 주소, 전화번호, 주소 문자열 등. 렌더러가 kind 에 맞는 링크로
-    /// 감쌉니다(mailto:, tel:).
+    /// Email address, phone number, address string, etc. The renderer wraps
+    /// it in the right kind of link for `kind` (mailto:, tel:).
     pub value: Text,
-    /// 화면에 보일 라벨. 생략하면 kind 의 기본 이름을 씁니다.
+    /// Label shown on screen. Falls back to the default name for `kind` if omitted.
     #[serde(default)]
     pub label: Option<Text>,
 }
@@ -370,7 +376,7 @@ pub enum ContactKind {
     Phone,
     Address,
     Website,
-    /// 링크 없이 텍스트로만 표시합니다.
+    /// Shown as plain text, with no link.
     Custom,
 }
 
@@ -387,7 +393,7 @@ impl ContactKind {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 테마 — 아래 필드들은 CSS 커스텀 프로퍼티와 1:1 로 대응됩니다.
+// Theme — the fields below map 1:1 to CSS custom properties.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -395,13 +401,13 @@ impl ContactKind {
 pub struct Theme {
     pub background: Background,
     pub decoration: Option<Decoration>,
-    /// 명함 본체(흰 종이).
+    /// The card body itself (the white sheet).
     pub sheet: Sheet,
-    /// 섹션 안에 들어가는 링크 카드.
+    /// Link cards that sit inside a section.
     pub card: Card,
     pub text: TextColors,
     pub font: Font,
-    /// 타임라인 점, 진행률 바, 태그 칩에 쓰이는 강조색. `--pf-accent`.
+    /// Accent color used for the timeline dots, progress bar, and tag chips. `--pf-accent`.
     pub accent: String,
 }
 
@@ -419,12 +425,12 @@ impl Default for Theme {
     }
 }
 
-/// 배경.
+/// Background.
 ///
-/// `solid` · `gradient` · `pattern` 은 `--pf-background` 한 토큰으로 내려갑니다
-/// (CSS `background` 단축 속성이 여러 레이어를 받으므로 패턴도 여기서 표현됩니다).
-/// `image` 는 흐림 처리가 필요해서 전용 레이어(`.pf-backdrop`)를 씁니다 —
-/// `background-image` 에는 `filter` 를 걸 수 없기 때문입니다.
+/// `solid`, `gradient`, and `pattern` all resolve to a single `--pf-background`
+/// token (the CSS `background` shorthand accepts multiple layers, so a
+/// pattern can be expressed here too). `image` needs blur, so it gets its own
+/// layer (`.pf-backdrop`) instead — `filter` can't be applied to `background-image`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Background {
@@ -437,16 +443,16 @@ pub enum Background {
         #[serde(default = "default_angle")]
         angle: u16,
     },
-    /// CSS 그라디언트로 그리는 반복 무늬. 이미지 파일이 필요 없습니다.
+    /// A repeating pattern drawn with a CSS gradient. No image file needed.
     Pattern {
         name: PatternName,
-        /// 무늬 아래 바탕색.
+        /// Base color behind the pattern.
         #[serde(default = "default_pattern_base")]
         color: String,
-        /// 무늬 자체의 색.
+        /// Color of the pattern itself.
         #[serde(default = "default_pattern_ink")]
         pattern_color: String,
-        /// 무늬 한 칸의 크기. CSS 길이값.
+        /// Size of one pattern tile. A CSS length value.
         #[serde(default = "default_pattern_size")]
         size: String,
     },
@@ -454,13 +460,13 @@ pub enum Background {
         src: AssetPath,
         #[serde(default)]
         fit: ImageFit,
-        /// CSS `background-position` 값.
+        /// A CSS `background-position` value.
         #[serde(default = "default_image_position")]
         position: String,
-        /// 흐림 반경. CSS 길이값. `"0px"` 이면 흐리지 않습니다.
+        /// Blur radius. A CSS length value. `"0px"` means no blur.
         #[serde(default = "default_image_blur")]
         blur: String,
-        /// 가독성을 위해 이미지 위에 덮는 반투명 색.
+        /// Semi-transparent overlay drawn on top of the image for readability.
         #[serde(default)]
         overlay: Option<String>,
     },
@@ -469,25 +475,25 @@ pub enum Background {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PatternName {
-    /// 물방울 점.
+    /// Polka dots.
     Dots,
-    /// 모눈.
+    /// Grid.
     Grid,
-    /// 사선 줄무늬.
+    /// Diagonal stripes.
     Stripes,
-    /// 체크무늬.
+    /// Checkerboard.
     Checks,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageFit {
-    /// 화면을 꽉 채우고 넘치는 부분은 자릅니다.
+    /// Fills the frame, cropping anything that overflows.
     #[default]
     Cover,
-    /// 이미지 전체가 보이도록 맞춥니다.
+    /// Scales so the whole image stays visible.
     Contain,
-    /// 원본 크기로 타일처럼 반복합니다.
+    /// Repeats at original size, like a tile.
     Repeat,
 }
 
@@ -523,13 +529,13 @@ impl Default for Background {
     }
 }
 
-/// 색종이·스티커 장식 레이어. 순수 장식이라 `aria-hidden` 으로 나갑니다.
+/// Confetti/sticker decoration layer. Purely decorative, so it's marked `aria-hidden`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Decoration {
-    /// 내장 SVG 세트.
+    /// Built-in SVG set.
     Preset { name: DecorationPreset },
-    /// 상·하단에 직접 올리는 이미지.
+    /// Custom images placed at the top and/or bottom.
     Custom {
         #[serde(default)]
         top: Option<AssetPath>,
@@ -550,7 +556,7 @@ pub enum DecorationPreset {
 #[serde(deny_unknown_fields, default)]
 pub struct Sheet {
     pub background: String,
-    /// CSS 길이값.
+    /// A CSS length value.
     pub radius: String,
     pub shadow: bool,
 }
@@ -569,7 +575,7 @@ impl Default for Sheet {
 #[serde(deny_unknown_fields, default)]
 pub struct Card {
     pub background: String,
-    /// CSS 길이값. 알약 모양은 999px.
+    /// A CSS length value. Use 999px for a pill shape.
     pub radius: String,
     pub shadow: bool,
     pub style: CardStyle,
@@ -589,12 +595,12 @@ impl Default for Card {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CardStyle {
-    /// 배경색으로 채운 기본형.
+    /// Default: filled with the background color.
     #[default]
     Fill,
-    /// 테두리만.
+    /// Outline only.
     Outline,
-    /// 반투명 + 블러.
+    /// Semi-transparent + blurred.
     Glass,
 }
 
@@ -618,32 +624,33 @@ impl Default for TextColors {
     }
 }
 
-/// 글씨.
+/// Typography.
 ///
-/// 프리셋을 고르면 폰트 스택과 웹폰트 CSS URL 이 함께 따라옵니다. CDN 주소를
-/// 직접 찾아 넣지 않아도 되고, 편집 UI 에서는 그대로 드롭다운이 됩니다.
-/// 목록에 없는 폰트는 `preset = "custom"` 에 `family` 를 함께 줍니다 —
-/// 소셜 아이콘의 `platform = "custom"` + `icon` 과 같은 방식입니다.
+/// Picking a preset brings along both the font stack and the webfont CSS URL,
+/// so you don't need to go hunt down a CDN URL yourself, and the editing UI
+/// can turn it straight into a dropdown. For a font that isn't in the list,
+/// use `preset = "custom"` together with `family` — the same pattern as
+/// `platform = "custom"` + `icon` for social icons.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct Font {
-    /// 본문 폰트.
+    /// Body font.
     pub preset: FontPreset,
-    /// 제목 폰트. 생략하면 본문과 같은 폰트를 씁니다.
+    /// Heading font. Falls back to the body font if omitted.
     pub heading_preset: Option<FontPreset>,
-    /// `preset = "custom"` 일 때 필수인 CSS font-family 스택.
+    /// CSS font-family stack, required when `preset = "custom"`.
     pub family: Option<String>,
-    /// `heading_preset = "custom"` 일 때 필수.
+    /// Required when `heading_preset = "custom"`.
     pub heading_family: Option<String>,
-    /// 프리셋이 제공하는 URL 에 **더해서** 주입할 웹폰트 CSS URL.
+    /// Extra webfont CSS URLs to inject **in addition to** whatever the preset provides.
     pub stylesheets: Vec<String>,
     pub heading_weight: u16,
-    /// 본문 기준 크기. 이 값에서 나머지 크기가 상대적으로 계산됩니다.
+    /// Base body size. All other sizes are computed relative to this.
     pub base_size: String,
-    /// f64 입니다. f32 로 두면 JSON 왕복마다 1.6 이 1.600000023841858 로
-    /// 번져서 저장할 때마다 값이 나빠집니다.
+    /// This is an f64. Using f32 makes 1.6 drift to 1.600000023841858 on
+    /// every JSON round-trip, degrading the stored value each time it's saved.
     pub line_height: f64,
-    /// CSS `letter-spacing` 값. `"normal"` 또는 길이값.
+    /// A CSS `letter-spacing` value: `"normal"` or a length.
     pub letter_spacing: String,
 }
 
@@ -664,10 +671,11 @@ impl Default for Font {
 }
 
 impl Font {
-    /// `--pf-font-family` 에 들어갈 값.
+    /// The value to put in `--pf-font-family`.
     ///
-    /// `custom` 인데 `family` 가 없으면 `None` 입니다. 검증에서 오류로 잡히므로
-    /// 렌더러는 여기까지 오지 않습니다.
+    /// Returns `None` if `preset` is `custom` and `family` is missing —
+    /// validation catches that as an error, so the renderer never has to
+    /// deal with it.
     pub fn body_family(&self) -> Option<&str> {
         match self.preset {
             FontPreset::Custom => self.family.as_deref(),
@@ -675,7 +683,8 @@ impl Font {
         }
     }
 
-    /// `--pf-font-heading-family` 에 들어갈 값. 제목 프리셋이 없으면 본문과 같습니다.
+    /// The value to put in `--pf-font-heading-family`. Same as the body font
+    /// when no heading preset is set.
     pub fn heading_family(&self) -> Option<&str> {
         match self.heading_preset {
             None => self.body_family(),
@@ -684,8 +693,8 @@ impl Font {
         }
     }
 
-    /// `<head>` 에 넣을 웹폰트 CSS URL. 중복은 제거합니다 — 본문과 제목이 같은
-    /// 프리셋이거나 같은 CDN 주소를 쓰는 경우가 흔합니다.
+    /// Webfont CSS URLs to put in `<head>`. Duplicates are removed — it's
+    /// common for the body and heading to share a preset or CDN URL.
     pub fn stylesheet_urls(&self) -> Vec<&str> {
         let mut urls: Vec<&str> = Vec::new();
 
@@ -711,37 +720,38 @@ impl Font {
     }
 }
 
-/// 내장 폰트 프리셋.
+/// Built-in font presets.
 ///
-/// 폰트를 추가하려면 변형을 넣고 아래 세 메서드에 값을 채우면 됩니다.
-/// `Platform` 과 마찬가지로 기여 받기 쉬운 지점입니다.
+/// To add a font, add a variant and fill in the three methods below. Like
+/// `Platform`, this is meant to be an easy spot for contributors.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FontPreset {
-    /// 웹폰트를 내려받지 않고 기기 기본 글꼴을 씁니다. 가장 빠릅니다.
+    /// Uses the device's default font instead of downloading a webfont. Fastest option.
     #[default]
     System,
     Pretendard,
     NotoSansKr,
     NanumGothic,
-    /// 명조(세리프).
+    /// Serif (myeongjo).
     NanumMyeongjo,
-    /// 손글씨.
+    /// Handwriting style.
     Gaegu,
-    /// 둥근 제목용.
+    /// Rounded, good for headings.
     Jua,
     IbmPlexSansKr,
-    /// 단정한 고딕.
+    /// Clean gothic.
     GowunDodum,
-    /// 목록에 없는 폰트. `family` 를 함께 지정해야 합니다.
+    /// A font not in the list. Must be paired with `family`.
     Custom,
 }
 
 impl FontPreset {
-    /// 편집 UI 드롭다운에 보일 이름의 **키**.
+    /// The **key** for the name shown in the editor UI dropdown.
     ///
-    /// 이름 자체를 돌려주면 이 함수가 언어를 정해버립니다. 폰트 이름은 고유명사
-    /// 라 대부분 그대로지만 "기기 기본"·"직접 지정" 같은 것은 번역되어야 합니다.
+    /// Returning the name directly would lock this function into one
+    /// language. Font names are mostly proper nouns and stay as-is, but
+    /// things like "device default" or "custom" need to be translated.
     pub fn label_key(self) -> &'static str {
         match self {
             FontPreset::System => "font.system",
@@ -757,8 +767,8 @@ impl FontPreset {
         }
     }
 
-    /// CSS font-family 스택. 웹폰트가 늦게 뜨거나 실패할 때를 대비해 뒤에
-    /// 기기 기본 글꼴을 붙입니다.
+    /// CSS font-family stack. Ends with the device default font as a
+    /// fallback for when the webfont loads late or fails.
     pub fn family(self) -> &'static str {
         const FALLBACK: &str = "-apple-system, BlinkMacSystemFont, system-ui, \
              'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif";
@@ -787,12 +797,12 @@ impl FontPreset {
             FontPreset::GowunDodum => {
                 "'Gowun Dodum', -apple-system, system-ui, 'Malgun Gothic', sans-serif"
             }
-            // 검증에서 family 를 요구하므로 여기까지 오지 않습니다.
+            // Validation requires `family` here, so this branch is never reached.
             FontPreset::Custom => FALLBACK,
         }
     }
 
-    /// `<head>` 에 넣을 웹폰트 CSS URL. 기기 기본 글꼴은 받을 것이 없습니다.
+    /// Webfont CSS URL to put in `<head>`. The device default font has nothing to fetch.
     pub fn stylesheet(self) -> Option<&'static str> {
         match self {
             FontPreset::System | FontPreset::Custom => None,
@@ -821,35 +831,35 @@ impl FontPreset {
         }
     }
 
-    /// 실제로 제공되는 굵기. 여기 없는 굵기를 쓰면 브라우저가 글자를 억지로
-    /// 굵게 그려서(합성 볼드) 모양이 뭉개집니다.
+    /// Weights actually provided. Using a weight not listed here makes the
+    /// browser fake-bold the text (synthetic bold), which looks mushy.
     pub fn available_weights(self) -> &'static [u16] {
         match self {
-            // 가변 폰트 — 구간 내 아무 값이나 됩니다.
+            // Variable fonts — any value in the range works.
             FontPreset::Pretendard => &[100, 200, 300, 400, 500, 600, 700, 800, 900],
             FontPreset::NotoSansKr => &[400, 500, 700, 800],
             FontPreset::NanumGothic | FontPreset::NanumMyeongjo => &[400, 700, 800],
             FontPreset::Gaegu => &[300, 400, 700],
             FontPreset::IbmPlexSansKr => &[400, 500, 600, 700],
-            // 굵기가 하나뿐인 폰트.
+            // Fonts with only one weight available.
             FontPreset::Jua | FontPreset::GowunDodum => &[400],
-            // 기기 글꼴과 직접 지정은 알 수 없으므로 검사하지 않습니다.
+            // Device fonts and custom fonts are unknown, so we don't check them.
             FontPreset::System | FontPreset::Custom => &[],
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 기능 토글 / 푸터
+// Feature toggles / footer
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct Features {
-    /// 링크 카드 오른쪽 ⋮ 버튼 (링크 복사 / OS 공유 시트).
+    /// The ⋮ button on link cards (copy link / OS share sheet).
     pub share_menu: bool,
-    /// 상단에 vCard(.vcf) 저장 버튼을 넣습니다. 명함답게 연락처를 바로
-    /// 주소록에 넣을 수 있습니다.
+    /// Adds a "save vCard (.vcf)" button at the top. Fitting for a business
+    /// card — lets people add the contact straight to their address book.
     pub vcard_download: bool,
 }
 
@@ -862,17 +872,17 @@ impl Default for Features {
     }
 }
 
-/// GitHub Pages 배포 설정.
+/// GitHub Pages deployment settings.
 ///
-/// 토큰은 받지 않습니다. 이미 설정된 git 자격증명을 그대로 씁니다.
+/// No token is accepted here — it uses whatever git credentials are already configured.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct Deploy {
-    /// 올릴 리모트 이름.
+    /// Remote to push to.
     pub remote: String,
-    /// 배포 브랜치. GitHub Pages 에서 이 브랜치를 가리키게 설정해야 합니다.
+    /// Deployment branch. GitHub Pages needs to be configured to point at this branch.
     pub branch: String,
-    /// 사용자 지정 도메인. 있으면 `dist/CNAME` 을 씁니다.
+    /// Custom domain. If set, writes `dist/CNAME`.
     pub cname: Option<String>,
 }
 

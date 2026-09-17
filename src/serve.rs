@@ -1,10 +1,12 @@
-//! 로컬 편집 UI.
+//! The local editing UI.
 //!
-//! `127.0.0.1` 에만 붙는 작은 axum 서버입니다. 왼쪽은 폼, 오른쪽은 **실제
-//! 렌더러 출력**을 담은 iframe 이라 미리보기가 결과물과 어긋날 수 없습니다.
-//! 편집기용 렌더링을 따로 만들었다면 둘이 조금씩 달라졌을 겁니다.
+//! A small axum server that only binds to `127.0.0.1`. The left side is the
+//! form; the right side is an iframe holding the **actual renderer output**,
+//! so the preview can never drift from the real result. A separate
+//! editor-only rendering path would have gradually diverged from it.
 //!
-//! 인증은 없습니다. 루프백에만 바인딩하고, 다른 기기에서 접근할 수 없습니다.
+//! There's no authentication. It only binds to loopback, so other devices
+//! can't reach it.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -37,11 +39,12 @@ struct AppState {
 
 type Shared = Arc<Mutex<AppState>>;
 
-/// 떠 있는 편집 서버로 가는 손잡이.
+/// A handle to the running editor server.
 ///
-/// 데스크톱 앱이 **서버를 다시 띄우지 않고** 다른 명함 폴더로 옮겨갈 수 있게
-/// 합니다. 같은 프로세스 안이라 가능한 일입니다 — 자식 프로세스였다면 죽이고
-/// 새로 띄우고 포트를 다시 기다려야 합니다.
+/// Lets the desktop app switch to a different card folder **without
+/// restarting the server**. That's only possible because it's in the same
+/// process — a child process would have to be killed, respawned, and its
+/// port waited on all over again.
 #[derive(Clone)]
 pub struct Editor {
     url: String,
@@ -53,12 +56,12 @@ impl Editor {
         &self.url
     }
 
-    /// 지금 열려 있는 설정 파일.
+    /// The config file currently open.
     pub fn config_path(&self) -> PathBuf {
         self.state.lock().unwrap().config_path.clone()
     }
 
-    /// 다른 명함으로 갈아탑니다. 창은 호출하는 쪽이 새로고침하면 됩니다.
+    /// Switches to a different card. The caller is responsible for refreshing the window.
     pub fn open(&self, config_path: &Path) {
         let root = crate::project_root(config_path).to_path_buf();
 
@@ -68,7 +71,7 @@ impl Editor {
     }
 }
 
-/// 터미널에서 띄웁니다. Ctrl+C 를 누를 때까지 돌아오지 않습니다.
+/// Launched from the terminal. Doesn't return until Ctrl+C.
 pub fn run(config_path: &Path) -> std::io::Result<()> {
     let app = router(new_state(config_path));
 
@@ -76,19 +79,20 @@ pub fn run(config_path: &Path) -> std::io::Result<()> {
         .enable_all()
         .build()?;
 
-    // 터미널에 쓸 언어. 편집기 화면 언어와 따로입니다 — 이 줄들은 편집기가
-    // 뜨기 전에 찍히고, 그때는 화면이 무슨 언어를 고를지 알 수 없습니다.
+    // Language for terminal output. Separate from the editor's UI language —
+    // these lines print before the editor is even up, before we could know
+    // what language the page will end up choosing.
     let strings = terminal_strings(config_path);
-    // 종료 인사는 미리 만들어 둡니다. 셧다운 future 는 `strings` 보다 오래 살 수
-    // 있어서 참조를 들고 들어갈 수 없습니다.
+    // Build the closing message ahead of time. The shutdown future can outlive
+    // `strings`, so it can't carry a reference into it.
     let closed = strings.get("msg.serve.closed").to_string();
 
     runtime.block_on(async move {
         let (listener, addr) = bind().await?;
         let url = format!("http://{addr}/");
 
-        // 데스크톱 앱이 읽는 줄. 사람이 읽는 문구는 번역될 수 있으므로
-        // 기계가 찾을 표식을 따로 둡니다.
+        // A line the desktop app parses. The human-readable message can be
+        // translated, so we keep a separate marker for machines to look for.
         println!("PROFILEIT_LISTENING {url}");
         println!(
             "{}",
@@ -98,7 +102,7 @@ pub fn run(config_path: &Path) -> std::io::Result<()> {
         );
         println!("{}", strings.get("msg.serve.stop"));
 
-        // 데스크톱 앱 안에서는 창이 이미 있으므로 브라우저를 또 열지 않습니다.
+        // Inside the desktop app there's already a window, so we don't open a browser too.
         if std::env::var_os("PROFILEIT_NO_BROWSER").is_none() {
             if !open_browser(&url) {
                 println!(
@@ -120,11 +124,12 @@ pub fn run(config_path: &Path) -> std::io::Result<()> {
     })
 }
 
-/// 같은 프로세스 안에서 띄우고 주소를 돌려줍니다.
+/// Spawns in-process and returns the address.
 ///
-/// 데스크톱 앱(`src-tauri/`)이 씁니다. 둘 다 Rust 라서 자식 프로세스를 띄우고
-/// 포트를 넘기고 뜰 때까지 기다리는 과정이 통째로 필요 없습니다 — 앱이 끝나면
-/// 서버도 같이 끝나므로 고아 프로세스가 남지도 않습니다.
+/// Used by the desktop app (`src-tauri/`). Since both are Rust, none of the
+/// usual dance — spawning a child process, passing the port, waiting for it
+/// to come up — is needed at all. And since the server dies with the app,
+/// there's no orphan process left behind either.
 pub fn spawn(config_path: &Path) -> std::io::Result<Editor> {
     let state = new_state(config_path);
     let app = router(state.clone());
@@ -153,9 +158,9 @@ pub fn spawn(config_path: &Path) -> std::io::Result<Editor> {
                     }
                 };
 
-                // 주소를 먼저 알려야 창이 뜰 수 있습니다.
+                // The window can't open until it knows the address.
                 if tx.send(Ok(format!("http://{addr}/"))).is_err() {
-                    return; // 기다리던 쪽이 사라졌으면 띄울 이유가 없습니다.
+                    return; // Whoever was waiting is gone, so there's no reason to keep serving.
                 }
                 let _ = axum::serve(listener, app).await;
             });
@@ -168,8 +173,8 @@ pub fn spawn(config_path: &Path) -> std::io::Result<Editor> {
     Ok(Editor { url, state })
 }
 
-/// 터미널에 쓸 언어. `PROFILEIT_LANG` 이 있으면 그것을, 없으면 이 명함의
-/// 기본 언어를 씁니다 — CLI(`src/main.rs`)와 같은 규칙입니다.
+/// Language for terminal output. Uses `PROFILEIT_LANG` if set, otherwise this
+/// card's default language — the same rule as the CLI (`src/main.rs`).
 fn terminal_strings(config_path: &Path) -> Strings {
     let root = crate::project_root(config_path);
     let chosen = std::env::var("PROFILEIT_LANG").ok().unwrap_or_else(|| {
@@ -192,10 +197,10 @@ fn new_state(config_path: &Path) -> Shared {
     }))
 }
 
-/// 라우터. `run` 과 `spawn` 이 공유합니다.
+/// The router, shared by `run` and `spawn`.
 ///
-/// 루프백에만 바인딩합니다. 0.0.0.0 이면 같은 네트워크의 다른 기기가 설정을
-/// 고칠 수 있게 되는데, 인증이 없으므로 그건 곤란합니다.
+/// Only binds to loopback. Binding to 0.0.0.0 would let other devices on the
+/// same network edit the config, which isn't okay given there's no authentication.
 fn router(state: Shared) -> Router {
     Router::new()
         .route("/", get(|| async { Html(EDITOR_HTML) }))
@@ -217,11 +222,13 @@ fn router(state: Shared) -> Router {
         .with_state(state)
 }
 
-/// 기본 포트가 쓰이고 있으면 몇 개 더 시도합니다. 편집기를 두 개 띄우는 일이
-/// 드물지 않은데, 그때마다 포트를 직접 고르게 하고 싶지 않습니다.
+/// If the default port is taken, tries a few more. Running two editors at
+/// once isn't unusual, and we don't want to make people pick a port manually
+/// every time.
 ///
-/// `PROFILEIT_PORT` 가 있으면 그 포트만 씁니다. 데스크톱 앱이 빈 포트를 먼저
-/// 잡아두고 넘겨주기 때문에, 다른 포트로 흘러가면 창이 엉뚱한 곳을 봅니다.
+/// If `PROFILEIT_PORT` is set, only that port is used. The desktop app claims
+/// a free port first and hands it over, so falling back to a different port
+/// would leave the window pointed at the wrong place.
 async fn bind() -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
     if let Some(port) = std::env::var("PROFILEIT_PORT").ok().and_then(|p| p.parse().ok()) {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
@@ -241,19 +248,22 @@ async fn bind() -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
     }))
 }
 
-/// 기본 브라우저로 주소를 엽니다.
+/// Opens the URL in the default browser.
 ///
-/// **셸을 거치지 않습니다.** 윈도에서 `cmd /C start` 를 쓰면 cmd 가 명령줄을
-/// 자기 규칙으로 다시 해석해서, 주소에 들어 있는 `&`·`|`·`%` 가 명령 구분자나
-/// 환경 변수 확장으로 동작합니다. `https://example.com/?a=1&calc` 같은 주소
-/// 하나로 다른 프로그램이 실행될 수 있습니다.
+/// **Never goes through a shell.** Using `cmd /C start` on Windows would have
+/// cmd reinterpret the command line by its own rules, so `&`, `|`, `%` inside
+/// the URL would act as command separators or environment-variable
+/// expansion. A single URL like `https://example.com/?a=1&calc` could launch
+/// an unrelated program.
 ///
-/// `rundll32 url.dll,FileProtocolHandler` 는 셸을 타지 않고 등록된 기본
-/// 브라우저로 바로 넘깁니다. 유닉스에서는 `Command` 가 원래 셸을 쓰지 않으므로
-/// `open`·`xdg-open` 을 그대로 부르면 됩니다.
+/// `rundll32 url.dll,FileProtocolHandler` hands off straight to the
+/// registered default browser without touching a shell. On Unix, `Command`
+/// never goes through a shell to begin with, so `open`/`xdg-open` can be
+/// called directly.
 fn open_browser(url: &str) -> bool {
     if !is_openable(url) {
-        // 문구는 부르는 쪽이 자기 언어로 냅니다. 여기서는 열었는지만 알립니다.
+        // The message is up to the caller to render in its own language. We
+        // only report whether it opened.
         return false;
     }
 
@@ -266,14 +276,15 @@ fn open_browser(url: &str) -> bool {
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = std::process::Command::new("xdg-open").arg(url).spawn();
 
-    // 브라우저가 안 열려도 주소를 출력했으니 치명적이지 않습니다.
+    // Not fatal even if the browser doesn't open — the URL was already printed.
     result.is_ok()
 }
 
-/// 넘겨도 되는 주소인지.
+/// Whether this URL is safe to hand off.
 ///
-/// 셸을 안 타므로 특수문자 자체는 위험하지 않지만, 정상적인 주소에는 공백이나
-/// 제어문자가 들어가지 않습니다. 들어 있다면 어딘가에서 조작된 값입니다.
+/// Since we never go through a shell, special characters aren't dangerous by
+/// themselves — but a legitimate URL never contains whitespace or control
+/// characters. If it does, the value has been tampered with somewhere.
 fn is_openable(url: &str) -> bool {
     let http = url.starts_with("http://") || url.starts_with("https://");
     let clean = !url.chars().any(|c| c.is_control() || c.is_whitespace());
@@ -284,10 +295,11 @@ fn is_openable(url: &str) -> bool {
 // API
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 편집기로 보내는 진단.
+/// A diagnostic sent to the editor.
 ///
-/// 문장이 아니라 키와 인자를 보냅니다. 편집기가 자기 화면 언어로 조립하므로,
-/// 서버가 어느 언어를 쓰는지와 무관하게 읽을 수 있습니다.
+/// Sent as a key and arguments rather than a finished sentence. The editor
+/// assembles it in its own UI language, so it reads correctly regardless of
+/// what language the server happens to run in.
 #[derive(Serialize)]
 struct Diagnostic {
     severity: &'static str,
@@ -350,10 +362,10 @@ async fn get_config(State(state): State<Shared>) -> Response {
     .into_response()
 }
 
-/// 편집기가 드롭다운을 채우는 데 쓰는 목록들.
+/// The lists the editor uses to fill its dropdowns.
 ///
-/// 하드코딩하지 않고 서버가 넘기는 이유: 폰트 프리셋이나 언어를 늘렸을 때
-/// 편집기 JS 를 따라 고치는 것을 잊기 쉽습니다.
+/// Why the server sends these instead of hardcoding them in JS: it's easy to
+/// forget to update the editor's JS when a font preset or language gets added.
 fn meta(root: &Path) -> Value {
     let fonts: Vec<Value> = [
         FontPreset::System,
@@ -383,11 +395,12 @@ fn meta(root: &Path) -> Value {
         .map(|code| json!({ "value": code, "label": i18n::language_name(code, root) }))
         .collect();
 
-    // 편집기 화면 문구를 언어별로 한 번에 내려줍니다. 화면 언어를 바꿀 때
-    // 서버에 다시 묻지 않고 즉시 갈아끼울 수 있습니다.
+    // Send the editor's UI strings for every language up front, so switching
+    // the display language can happen instantly without asking the server again.
     //
-    // `msg.` 도 함께 보냅니다. 서버가 보내는 오류·경고는 완성된 문장이 아니라
-    // 키라서, 편집기가 자기 표를 갖고 있어야 화면 언어로 읽을 수 있습니다.
+    // `msg.` is included too. Errors and warnings from the server are keys,
+    // not finished sentences, so the editor needs its own lookup table to
+    // render them in the UI language.
     let mut ui_strings = serde_json::Map::new();
     for code in i18n::builtin_codes() {
         if let Ok(strings) = Strings::load(code, root) {
@@ -426,7 +439,7 @@ async fn post_config(State(state): State<Shared>, Json(body): Json<Value>) -> Re
         (state.config_path.clone(), state.root.clone())
     };
 
-    // 먼저 스키마에 맞는지 봅니다. 여기서 실패하면 파일은 건드리지 않습니다.
+    // Check the shape first. If this fails, the file is left untouched.
     let config: Config = match serde_json::from_value(body.clone()) {
         Ok(config) => config,
         Err(err) => {
@@ -436,8 +449,8 @@ async fn post_config(State(state): State<Shared>, Json(body): Json<Value>) -> Re
 
     let diagnostics = validate::validate(&config, &root);
     if validate::has_errors(&diagnostics) {
-        // 오류가 있으면 저장하지 않습니다 — 깨진 설정이 파일에 남는 것보다
-        // 편집기에서 고치는 쪽이 낫습니다.
+        // Don't save if there are errors — better to fix it in the editor than
+        // to let a broken config land on disk.
         return Json(json!({
             "saved": false,
             "diagnostics": to_json_diagnostics(&diagnostics),
@@ -455,7 +468,7 @@ async fn post_config(State(state): State<Shared>, Json(body): Json<Value>) -> Re
     }
 }
 
-/// 편집기의 "사이트 생성" 버튼. 저장된 설정으로 `dist/` 를 만듭니다.
+/// The editor's "Build Site" button. Builds `dist/` from the saved config.
 async fn post_build(State(state): State<Shared>) -> Response {
     let (path, root) = {
         let state = state.lock().unwrap();
@@ -500,16 +513,18 @@ struct OpenBody {
     url: String,
 }
 
-/// 주소를 기본 브라우저로 엽니다.
+/// Opens a URL in the default browser.
 ///
-/// 데스크톱 앱의 웹뷰는 `window.open` 을 막습니다. 막지 않더라도 편집기 창이
-/// 외부 사이트로 넘어가 버리면 돌아올 방법이 마땅치 않습니다. 그래서 서버가
-/// 대신 엽니다 — 앱에서도 일반 브라우저에서도 같은 코드로 동작합니다.
+/// The desktop app's webview blocks `window.open`. Even if it didn't, there'd
+/// be no good way back once the editor window navigated to an external site.
+/// So the server opens it instead — the same code path works whether we're
+/// inside the app or a regular browser.
 async fn post_open(Json(body): Json<OpenBody>) -> Response {
     let url = body.url.trim();
 
-    // 판정은 `is_openable` 한 곳에서만 합니다. 여기서 따로 검사하면 둘이
-    // 어긋나서, 열리지도 않았는데 열렸다고 답하는 일이 생깁니다.
+    // The decision is made in exactly one place, `is_openable`. A separate
+    // check here could drift out of sync and report success for a URL that
+    // never actually opened.
     if !is_openable(url) {
         return error_json(Message::new("msg.api.notOpenable"));
     }
@@ -519,10 +534,10 @@ async fn post_open(Json(body): Json<OpenBody>) -> Response {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GitHub 연결
+// GitHub connection
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 연결 상태. 편집기가 화면을 그리는 데 필요한 것을 한 번에 돌려줍니다.
+/// Connection status. Returns everything the editor needs to render the page in one shot.
 async fn get_github(State(state): State<Shared>) -> Response {
     let root = state.lock().unwrap().root.clone();
 
@@ -536,7 +551,7 @@ async fn get_github(State(state): State<Shared>) -> Response {
         .into_response();
     };
 
-    // 토큰이 만료됐거나 취소됐을 수 있습니다. 목록을 받아보기 전에 확인합니다.
+    // The token might have expired or been revoked. Check that before fetching the repo list.
     let account = match github::whoami(&token) {
         Ok(account) => account,
         Err(err) => {
@@ -562,7 +577,7 @@ async fn get_github(State(state): State<Shared>) -> Response {
     .into_response()
 }
 
-/// 지금 프로젝트가 가리키는 리모트. 어느 저장소가 골라져 있는지 보여줍니다.
+/// The remote the current project points at. Shows which repository is selected.
 fn current_remote(root: &std::path::Path) -> Option<String> {
     let output = std::process::Command::new("git")
         .current_dir(root)
@@ -585,8 +600,8 @@ struct ConnectBody {
 async fn post_github_connect(Json(body): Json<ConnectBody>) -> Response {
     let token = deploy::Token::new(body.token.trim());
 
-    // 저장하기 전에 써봅니다. 잘못된 토큰을 저장소에 넣어두면 다음 실행에서
-    // 연결된 것처럼 보이다가 실제 작업에서 실패합니다.
+    // Try it before storing it. A bad token saved to the store would look
+    // connected on the next launch, then fail as soon as something real is attempted.
     let account = match github::whoami(&token) {
         Ok(account) => account,
         Err(err) => return error_json(err.message()),
@@ -608,17 +623,17 @@ async fn post_github_disconnect() -> Response {
 
 #[derive(Deserialize)]
 struct RepoBody {
-    /// 기존 저장소를 고른 경우.
+    /// Set when an existing repository was picked.
     #[serde(default)]
     clone_url: Option<String>,
-    /// 새로 만드는 경우.
+    /// Set when creating a new one.
     #[serde(default)]
     create: Option<String>,
     #[serde(default)]
     private: bool,
 }
 
-/// 저장소를 고르거나 만들고, 이 폴더의 리모트를 거기로 맞춥니다.
+/// Picks or creates a repository, and points this folder's remote at it.
 async fn post_github_repo(State(state): State<Shared>, Json(body): Json<RepoBody>) -> Response {
     let root = state.lock().unwrap().root.clone();
 
@@ -645,10 +660,10 @@ async fn post_github_repo(State(state): State<Shared>, Json(body): Json<RepoBody
     Json(json!({ "remote": url })).into_response()
 }
 
-/// 편집기의 "GitHub 배포" 버튼.
+/// The editor's "Deploy to GitHub" button.
 ///
-/// 올리기 전에 반드시 다시 빌드합니다 — 고친 내용이 빠진 dist 를 올리는 것이
-/// 가장 흔한 실수입니다.
+/// Always rebuilds before pushing — pushing a dist that's missing recent
+/// edits is the most common mistake here.
 async fn post_deploy(State(state): State<Shared>) -> Response {
     let (path, root) = {
         let state = state.lock().unwrap();
@@ -669,8 +684,8 @@ async fn post_deploy(State(state): State<Shared>) -> Response {
     match deploy::publish(&config, &root, &dist, token.as_ref()) {
         Err(err) => error_json(err.message()),
         Ok(mut outcome) => {
-            // 올린 뒤 Pages 를 켭니다. 이게 없으면 푸시는 됐는데 주소가
-            // 404 인 상태로 남아, 무엇이 빠졌는지 알기 어렵습니다.
+            // Enable Pages after pushing. Without this, the push succeeds but
+            // the URL stays a 404, and it's hard to tell what's missing.
             if let Some(token) = &token {
                 match pages_for(&config, &root, token, &outcome.branch) {
                     Ok(Some(url)) => outcome.pages_url = Some(url),
@@ -691,7 +706,7 @@ async fn post_deploy(State(state): State<Shared>) -> Response {
     }
 }
 
-/// Pages 를 켜고 실제 주소를 돌려줍니다.
+/// Enables Pages and returns the actual URL.
 fn pages_for(
     config: &Config,
     root: &std::path::Path,
@@ -707,7 +722,7 @@ fn pages_for(
 
     match github::enable_pages(token, &repo.owner, &repo.name, branch) {
         Ok(info) => Ok(info.url.or_else(|| {
-            // 방금 켰으면 주소가 아직 안 올 수 있습니다. 규칙대로 만듭니다.
+            // If Pages was just enabled, the URL might not be back yet. Build it by convention.
             config
                 .deploy
                 .cname
@@ -721,22 +736,22 @@ fn pages_for(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 이미지 올리기
+// Image uploads
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 struct UploadQuery {
-    /// 원본 파일 이름. 확장자를 알아내는 데만 씁니다.
+    /// The original filename. Only used to work out the extension.
     name: String,
-    /// 저장할 이름의 앞부분. `avatar`, `thumb` 처럼 용도를 나타냅니다.
+    /// The prefix of the saved filename, indicating its purpose — `avatar`, `thumb`, etc.
     #[serde(default)]
     kind: Option<String>,
 }
 
-/// 이미지를 `assets/` 에 저장하고 설정에 넣을 상대 경로를 돌려줍니다.
+/// Saves an image to `assets/` and returns the relative path to put in the config.
 ///
-/// multipart 대신 본문에 바이트를 그대로 받습니다. 의존성이 하나 줄고,
-/// 브라우저에서는 `fetch(file)` 한 줄이라 더 간단합니다.
+/// Takes raw bytes in the body instead of multipart. One less dependency, and
+/// simpler on the browser side too — just a `fetch(file)` call.
 async fn post_upload(
     State(state): State<Shared>,
     Query(query): Query<UploadQuery>,
@@ -754,8 +769,8 @@ async fn post_upload(
         );
     }
 
-    // 확장자는 허용 목록에서만 고릅니다. 원본 이름을 그대로 쓰면 경로를
-    // 거슬러 올라가거나 실행 가능한 파일을 심을 여지가 생깁니다.
+    // The extension is only chosen from an allowlist. Using the original name
+    // as-is would open the door to path traversal or planting an executable file.
     let extension = std::path::Path::new(&query.name)
         .extension()
         .and_then(|e| e.to_str())
@@ -775,8 +790,9 @@ async fn post_upload(
         }
     };
 
-    // 파일 내용이 정말 그 형식인지 봅니다. 확장자만 바꿔 올린 파일이
-    // 브라우저에서 깨져 보이는 것을 미리 막습니다.
+    // Check that the file content actually matches the claimed format. This
+    // heads off a file uploaded with just its extension swapped, which would
+    // otherwise show up broken in the browser.
     if !looks_like_image(&body, extension) {
         return error_json(Message::new("msg.upload.notAnImage").with("format", extension));
     }
@@ -799,8 +815,8 @@ async fn post_upload(
         return error_json(Message::new("msg.upload.noAssetsDir").with("detail", err));
     }
 
-    // 같은 이름을 덮어쓰면 브라우저 캐시 때문에 옛 사진이 계속 보입니다.
-    // 시각을 붙여 새 파일로 둡니다.
+    // Overwriting the same name would keep showing the old photo due to
+    // browser caching, so append a timestamp to make it a new file.
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -814,14 +830,14 @@ async fn post_upload(
     Json(json!({ "path": format!("assets/{filename}") })).into_response()
 }
 
-/// 파일 앞부분의 매직 넘버를 봅니다.
+/// Checks the magic number at the start of the file.
 fn looks_like_image(bytes: &[u8], extension: &str) -> bool {
     match extension {
         "png" => bytes.starts_with(&[0x89, b'P', b'N', b'G']),
         "jpg" => bytes.starts_with(&[0xFF, 0xD8, 0xFF]),
         "gif" => bytes.starts_with(b"GIF8"),
         "webp" => bytes.len() > 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP",
-        // SVG 는 텍스트라 매직 넘버가 없습니다. 앞부분에 태그가 있는지만 봅니다.
+        // SVG is text, so it has no magic number — just check for a tag near the start.
         "svg" => {
             let head = String::from_utf8_lossy(&bytes[..bytes.len().min(512)]).to_lowercase();
             head.contains("<svg") || head.contains("<?xml")
@@ -831,7 +847,7 @@ fn looks_like_image(bytes: &[u8], extension: &str) -> bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 미리보기
+// Preview
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -839,8 +855,8 @@ struct PreviewQuery {
     lang: Option<String>,
 }
 
-/// 디스크에 쓰지 않고 그때그때 렌더링합니다. 저장하지 않은 상태를 보여주는
-/// 것이 아니라 **저장된 설정**을 보여줍니다 — 편집기가 저장 후 새로고침합니다.
+/// Renders on the fly instead of writing to disk. This shows the **saved
+/// config**, not unsaved edits — the editor refreshes it after saving.
 async fn preview(State(state): State<Shared>, Query(query): Query<PreviewQuery>) -> Response {
     let (path, root) = {
         let state = state.lock().unwrap();
@@ -868,8 +884,8 @@ async fn preview(State(state): State<Shared>, Query(query): Query<PreviewQuery>)
         Err(err) => return error_html(&err),
     };
 
-    // 미리보기는 모든 언어가 같은 경로에 있으므로 접두사가 필요 없습니다.
-    // 언어 전환은 편집기 쪽 탭이 담당합니다.
+    // Every language shares the same path in the preview, so no prefix is
+    // needed. Switching languages is handled by tabs on the editor side.
     let entries: Vec<(String, String, String)> = languages
         .iter()
         .map(|l| {
@@ -893,14 +909,14 @@ async fn preview(State(state): State<Shared>, Query(query): Query<PreviewQuery>)
     Html(render::page(&ctx)).into_response()
 }
 
-/// 미리보기에서 참조하는 프로젝트 파일(아바타, 썸네일 등).
+/// Project files the preview references (avatar, thumbnails, etc.).
 async fn preview_asset(
     State(state): State<Shared>,
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> Response {
     let root = state.lock().unwrap().root.clone();
 
-    // 프로젝트 밖으로 나가는 경로를 막습니다.
+    // Block any path that escapes the project.
     if path.contains("..") {
         return (StatusCode::FORBIDDEN, "허용되지 않는 경로").into_response();
     }
@@ -924,7 +940,7 @@ async fn preview_asset(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 응답 도우미
+// Response helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn css(body: &'static str) -> Response {
@@ -939,9 +955,9 @@ fn js(body: &'static str) -> Response {
         .into_response()
 }
 
-/// 오류 응답.
+/// An error response.
 ///
-/// 문장이 아니라 키와 인자를 보냅니다. 편집기가 자기 화면 언어로 조립합니다.
+/// Sent as a key and arguments rather than a finished sentence; the editor assembles it in its own UI language.
 fn error_json(message: Message) -> Response {
     (
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -968,27 +984,29 @@ fn error_html(message: &str) -> Response {
 mod open_tests {
     use super::is_openable;
 
-    /// 셸을 안 타므로 특수문자 자체가 명령이 되지는 않지만, 주소에 공백이나
-    /// 제어문자가 섞여 들어오는 것은 정상이 아닙니다.
+    /// Since we never go through a shell, special characters aren't commands
+    /// by themselves, but whitespace or control characters showing up in a
+    /// URL is never normal.
     #[test]
     fn rejects_anything_that_is_not_a_plain_web_address() {
         assert!(is_openable("https://github.com/settings/tokens/new?scopes=repo"));
         assert!(is_openable("http://127.0.0.1:4180/"));
 
-        // 스킴이 아닌 것
+        // Not a web scheme
         assert!(!is_openable("file:///C:/Windows/System32/calc.exe"));
         assert!(!is_openable("javascript:alert(1)"));
         assert!(!is_openable("ftp://example.com"));
 
-        // 조작 흔적
+        // Signs of tampering
         assert!(!is_openable("https://example.com/ & calc"));
         assert!(!is_openable("https://example.com/\ncalc"));
         assert!(!is_openable("https://example.com/\tcalc"));
         assert!(!is_openable("https://example.com/\u{0}calc"));
     }
 
-    /// cmd 를 거치면 명령 구분자가 되는 문자들. 셸을 안 타므로 그대로
-    /// 브라우저에 넘어가야 합니다 — 정상적인 질의 문자열이기 때문입니다.
+    /// Characters that would act as command separators through cmd. We never
+    /// go through a shell, so they should pass straight through to the
+    /// browser — they're a legitimate part of a query string.
     #[test]
     fn keeps_legitimate_query_strings() {
         assert!(is_openable("https://example.com/?a=1&b=2"));
@@ -1000,8 +1018,8 @@ mod open_tests {
 mod tests {
     use crate::config::Config;
 
-    /// 편집기는 Config 를 JSON 으로 주고받습니다. 한 바퀴 돌아 같은 값이
-    /// 나오지 않으면 저장할 때마다 설정이 조금씩 망가집니다.
+    /// The editor exchanges Config as JSON. If a round trip doesn't come back
+    /// to the same value, the config would drift a little more corrupt with each save.
     #[test]
     fn config_round_trips_through_json() {
         let source = std::fs::read_to_string("profile.toml").expect("profile.toml");
@@ -1023,7 +1041,7 @@ mod editor_tests {
     use super::*;
     use std::io::{Read, Write};
 
-    /// 의존성 없이 GET 한 번. 테스트용이라 헤더 처리는 최소한만 합니다.
+    /// A single GET with no dependencies. Header handling is minimal since this is test-only.
     fn get(url: &str, path: &str) -> String {
         let authority = url
             .trim_start_matches("http://")
@@ -1042,8 +1060,9 @@ mod editor_tests {
         body
     }
 
-    /// Tauri 앱이 기대는 동작: **서버를 다시 띄우지 않고** 다른 명함으로
-    /// 갈아탑니다. 이게 깨지면 폴더를 바꿔도 옛 명함이 계속 보입니다.
+    /// The behavior the Tauri app relies on: switching to a different card
+    /// **without restarting the server**. If this breaks, changing folders
+    /// would keep showing the old card.
     #[test]
     fn switching_projects_does_not_need_a_restart() {
         let base = std::env::temp_dir().join("profileit-editor-switch");
@@ -1057,7 +1076,7 @@ mod editor_tests {
             crate::init::init(&config).expect("init");
         }
 
-        // 이름을 서로 다르게 바꿔 어느 쪽이 보이는지 구분합니다.
+        // Give each a distinct name so we can tell which one is showing.
         for (dir, name) in [(&first, "첫째명함"), (&second, "둘째명함")] {
             let config = dir.join("profile.toml");
             let source = std::fs::read_to_string(&config).expect("읽기");
@@ -1070,7 +1089,7 @@ mod editor_tests {
 
         editor.open(&second.join("profile.toml"));
 
-        // 같은 서버, 같은 주소 — 내용만 바뀝니다.
+        // Same server, same address — only the content changes.
         let after = get(editor.url(), "/api/config");
         assert!(after.contains("둘째명함"), "폴더 전환이 반영되지 않았습니다");
         assert!(!after.contains("첫째명함"));

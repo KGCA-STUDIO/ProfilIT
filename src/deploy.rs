@@ -1,14 +1,16 @@
-//! GitHub Pages 배포.
+//! GitHub Pages deployment.
 //!
-//! `dist/` 를 리포지터리의 배포 브랜치(기본 `gh-pages`)로 올립니다.
+//! Pushes `dist/` to the repository's deploy branch (`gh-pages` by default).
 //!
-//! 인증은 두 길입니다. GitHub 을 연결해 두었으면 저장된 토큰을 `GIT_ASKPASS`
-//! 로 넘기고, 아니면 이미 설정된 git 자격증명에 맡깁니다. 어느 쪽이든 토큰이
-//! 명령줄이나 리모트 주소에 박히지 않습니다.
+//! There are two authentication paths. If GitHub is connected, the stored
+//! token is passed through `GIT_ASKPASS`; otherwise we fall back to whatever
+//! git credentials are already configured. Either way, the token never ends
+//! up in the command line or the remote URL.
 //!
-//! 작업 트리는 건드리지 않습니다. 임시 인덱스에 `dist/` 를 담아 트리를 만들고
-//! `commit-tree` 로 커밋을 빚어 푸시합니다 — 브랜치를 체크아웃하지 않으므로
-//! 편집 중이던 파일이 사라지거나 섞이지 않습니다.
+//! The working tree is never touched. We build a tree from `dist/` in a
+//! temporary index and forge a commit with `commit-tree`, then push that —
+//! since we never check out the branch, files being edited can't disappear
+//! or get mixed in.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -17,10 +19,11 @@ use std::process::Command;
 use crate::config::Config;
 use crate::message::Message;
 
-/// GitHub 토큰.
+/// A GitHub token.
 ///
-/// `Debug` 를 직접 구현해 값이 로그나 오류 메시지에 딸려 나가지 않게 합니다.
-/// 파생 구현을 그대로 뒀다면 어딘가의 `{:?}` 한 번으로 새어 나갑니다.
+/// `Debug` is implemented by hand so the value never tags along in logs or
+/// error messages. Leaving the derived impl in place would leak it the first
+/// time something does a stray `{:?}`.
 #[derive(Clone)]
 pub struct Token(String);
 
@@ -29,8 +32,8 @@ impl Token {
         Token(value.into())
     }
 
-    /// 값을 꺼냅니다. **git 에 넘기거나 GitHub 에 보낼 때만** 쓰세요.
-    /// 로그나 오류 메시지에는 절대 넣지 않습니다.
+    /// Returns the raw value. Use this **only** to hand it to git or GitHub.
+    /// Never put it in a log line or error message.
     pub fn expose(&self) -> &str {
         &self.0
     }
@@ -46,13 +49,13 @@ impl fmt::Debug for Token {
 pub struct Outcome {
     pub branch: String,
     pub commit: String,
-    /// 올라간 파일 수.
+    /// Number of files pushed.
     pub files: usize,
-    /// 완성된 Pages 주소. 리모트가 GitHub 이 아니면 `None`.
+    /// The resulting Pages URL. `None` if the remote isn't GitHub.
     pub pages_url: Option<String>,
-    /// Pages 를 아직 켜지 않았을 수 있으니 안내할 설정 화면 주소.
+    /// Settings-page URL to point to, since Pages might not be enabled yet.
     pub settings_url: Option<String>,
-    /// 올라가긴 했지만 알아둬야 할 것들.
+    /// The push succeeded, but here's what's worth knowing about it.
     pub warnings: Vec<Message>,
 }
 
@@ -67,7 +70,7 @@ pub enum Error {
 }
 
 impl Error {
-    /// 화면에 내보낼 문구. 어느 언어로 만들지는 부르는 쪽이 정합니다.
+    /// The message to show the user. The caller decides what language to render it in.
     pub fn message(&self) -> Message {
         match self {
             Error::GitMissing => Message::new("msg.deploy.gitMissing"),
@@ -86,7 +89,7 @@ impl Error {
     }
 }
 
-/// git 단계 이름. 키로 두어 화면 언어에 맞춰 번역됩니다.
+/// Name of a git step. Kept as a key so it gets translated to the UI language.
 pub fn step_key(step: &str) -> &'static str {
     match step {
         "stage" => "msg.deploy.step.stage",
@@ -106,10 +109,11 @@ impl From<std::io::Error> for Error {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 배포
+// Deploy
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 저장소가 아니면 만듭니다. 명함 폴더는 보통 새 폴더라 흔한 경우입니다.
+/// Creates a repository if there isn't one already. Card folders are usually
+/// fresh folders, so this is the common case.
 pub fn ensure_repository(root: &Path) -> Result<(), Error> {
     if git(root, &["rev-parse", "--git-dir"]).is_ok() {
         return Ok(());
@@ -118,7 +122,7 @@ pub fn ensure_repository(root: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// 리모트를 가리키게 합니다. 있으면 주소만 바꿉니다.
+/// Points the remote at the given URL. If it already exists, just updates the URL.
 pub fn set_remote(root: &Path, name: &str, url: &str) -> Result<(), Error> {
     ensure_repository(root)?;
 
@@ -133,10 +137,11 @@ pub fn set_remote(root: &Path, name: &str, url: &str) -> Result<(), Error> {
         .map_err(|m| Error::Git { step: "remote", message: m })
 }
 
-/// `dist/` 를 배포 브랜치로 올립니다.
+/// Pushes `dist/` to the deploy branch.
 ///
-/// `token` 이 있으면 그것으로 인증합니다. 없으면 이미 설정된 git 자격증명에
-/// 맡깁니다 — 터미널에서 쓰던 방식 그대로입니다.
+/// If `token` is given, it's used to authenticate. Otherwise we fall back to
+/// whatever git credentials are already configured — the same as using the
+/// terminal directly.
 pub fn publish(
     config: &Config,
     root: &Path,
@@ -156,17 +161,19 @@ pub fn publish(
 
     prepare(config, dist)?;
 
-    // 리모트 브랜치를 최신으로. 없는 브랜치면 실패하는데, 첫 배포라 정상입니다.
+    // Bring the remote branch up to date. This fails if the branch doesn't
+    // exist yet, which is expected on the first deploy.
     let _ = git(root, &["fetch", &remote, &branch]);
 
     let index = git_dir.join("profileit-deploy-index");
     let _ = std::fs::remove_file(&index);
 
-    // 작업 디렉터리를 dist 로 옮기므로 경로를 모두 절대 경로로 굳힙니다.
+    // We're switching the working directory to dist, so pin every path to
+    // an absolute one.
     let work_tree = dist.canonicalize()?;
 
-    // work-tree 를 dist 로 두면 파일들이 저장소 루트에 놓입니다.
-    // -f 는 루트 .gitignore 의 `dist/` 규칙을 넘기기 위한 것입니다.
+    // Setting the work-tree to dist puts these files at the repo root.
+    // -f overrides the root .gitignore's `dist/` rule.
     git_with_index(&git_dir, &index, &work_tree, &["add", "-A", "-f", "."])
         .map_err(|m| Error::Git { step: "stage", message: m })?;
 
@@ -177,8 +184,8 @@ pub fn publish(
     let message = format!("명함 갱신 — {}", timestamp());
     let mut commit_args = vec!["commit-tree", tree.as_str(), "-m", message.as_str()];
 
-    // 이전 배포가 있으면 그 위에 쌓습니다. 히스토리가 이어져야 푸시가
-    // fast-forward 로 통과합니다.
+    // If there was a previous deploy, build on top of it. History needs to
+    // stay connected for the push to go through as a fast-forward.
     let parent = git(root, &["rev-parse", "--verify", &format!("{remote}/{branch}")]).ok();
     if let Some(parent) = &parent {
         commit_args.push("-p");
@@ -206,8 +213,9 @@ pub fn publish(
 
     let mut warnings = Vec::new();
 
-    // base_url 이 실제 주소와 다르면 og:url·canonical 이 엉뚱한 곳을 가리킵니다.
-    // 화면상으로는 멀쩡해서 공유해보기 전까지 모르는 종류의 고장입니다.
+    // If base_url doesn't match the actual URL, og:url/canonical point
+    // somewhere wrong. The page looks fine either way, so this kind of
+    // breakage stays invisible until someone actually shares the link.
     if let (Some(actual), Some(configured)) = (&pages_url, &config.site.base_url) {
         if !same_url(actual, configured) {
             warnings.push(
@@ -228,16 +236,17 @@ pub fn publish(
     })
 }
 
-/// 끝 슬래시와 대소문자만 다른 주소는 같은 것으로 봅니다.
+/// URLs that only differ by a trailing slash or case are treated as the same.
 fn same_url(a: &str, b: &str) -> bool {
     a.trim_end_matches('/').eq_ignore_ascii_case(b.trim_end_matches('/'))
 }
 
-/// GitHub Pages 가 요구하는 파일을 `dist/` 에 넣습니다.
+/// Writes the files GitHub Pages expects into `dist/`.
 fn prepare(config: &Config, dist: &Path) -> Result<(), Error> {
-    // 이게 없으면 GitHub 이 Jekyll 을 돌려서 `_` 로 시작하는 파일·폴더를
-    // 통째로 무시합니다. 지금은 해당 파일이 없지만 나중에 생기면 원인을
-    // 찾기 어려운 종류의 고장이라 미리 막습니다.
+    // Without this, GitHub runs Jekyll, which silently ignores every file and
+    // folder starting with `_`. We don't have any such files right now, but
+    // this is the kind of failure that's hard to diagnose once we do, so we
+    // head it off preemptively.
     std::fs::write(dist.join(".nojekyll"), b"")?;
 
     if let Some(domain) = &config.deploy.cname {
@@ -260,7 +269,7 @@ fn count_files(dir: &Path) -> usize {
 }
 
 fn timestamp() -> String {
-    // 외부 크레이트 없이 찍습니다. 사람이 읽을 표식이면 충분합니다.
+    // Stamped without pulling in an external crate. A human-readable marker is all we need.
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -269,18 +278,19 @@ fn timestamp() -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// git 부르기
+// Calling git
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn git(root: &Path, args: &[&str]) -> Result<String, String> {
     run(Command::new("git").current_dir(root).args(args))
 }
 
-/// 푸시.
+/// Push.
 ///
-/// 토큰이 있으면 `GIT_ASKPASS` 로 넘깁니다. 명령줄에 붙이면(`https://토큰@...`)
-/// 프로세스 목록과 git 오류 메시지에 그대로 노출됩니다. 임시 스크립트는 값을
-/// 담지 않고 환경 변수를 되읽기만 하므로 디스크에도 남지 않습니다.
+/// If a token is given, it's passed via `GIT_ASKPASS`. Embedding it in the
+/// URL (`https://token@...`) would expose it in the process list and in git's
+/// own error messages. The temporary script doesn't hold the value itself —
+/// it only reads it back from an environment variable — so it never touches disk either.
 fn push(
     root: &Path,
     git_dir: &Path,
@@ -295,7 +305,7 @@ fn push(
             .map_err(|m| Error::Git { step: "push", message: m });
     };
 
-    // 사용자 이름은 주소에 박아 둡니다. 비밀번호만 askpass 로 받으면 됩니다.
+    // The username is baked into the URL; only the password needs to come from askpass.
     let target = match parse_github(remote_url) {
         Some(repo) => format!("https://x-access-token@github.com/{}/{}.git", repo.owner, repo.name),
         None => remote_url.to_string(),
@@ -307,7 +317,7 @@ fn push(
         .current_dir(root)
         .env("GIT_ASKPASS", helper.path())
         .env("PROFILEIT_GIT_TOKEN", token.expose())
-        // 자격증명을 못 얻었을 때 터미널 입력을 기다리며 멈추지 않게 합니다.
+        // Stops git from hanging on a terminal prompt if it can't get credentials.
         .env("GIT_TERMINAL_PROMPT", "0")
         .args(["push", &target, refspec]));
 
@@ -316,7 +326,7 @@ fn push(
         .map_err(|m| Error::Git { step: "push", message: scrub(&m) })
 }
 
-/// 토큰이 오류 메시지에 섞여 나오지 않게 지웁니다.
+/// Strips the token out so it can't show up mixed into an error message.
 fn scrub(message: &str) -> String {
     let mut cleaned = String::with_capacity(message.len());
     for part in message.split_whitespace() {
@@ -330,17 +340,19 @@ fn scrub(message: &str) -> String {
     cleaned.trim_end().to_string()
 }
 
-/// git 이 비밀번호를 물어볼 때 실행되는 임시 스크립트.
+/// The temporary script git runs when it asks for a password.
 ///
-/// **공용 임시 폴더에 두지 않습니다.** 유닉스의 `/tmp` 는 누구나 쓸 수 있어서,
-/// 이름이 예측 가능하면 공격자가 미리 심볼릭 링크를 걸어 엉뚱한 파일을 덮어쓰게
-/// 하거나, 우리가 쓴 뒤 git 이 실행하기 전에 내용을 바꿔치기해 사용자 권한으로
-/// 임의 코드를 돌릴 수 있습니다.
+/// **This is never placed in a shared temp folder.** Unix's `/tmp` is
+/// writable by anyone, so a predictable filename lets an attacker pre-plant a
+/// symlink there to make us overwrite an arbitrary file, or swap the content
+/// out after we write it but before git executes it, running arbitrary code
+/// under the user's privileges.
 ///
-/// 그래서 저장소의 `.git` 안에 만듭니다. 이미 임시 인덱스를 두는 곳이고,
-/// 사용자 소유라 남이 끼어들 수 없습니다. 이름에는 프로세스 번호와 시각을
-/// 붙이고 `create_new` 로 만들어, 같은 이름이 이미 있으면 따라가지 않고
-/// 실패합니다.
+/// So it's created inside the repository's `.git` instead — a place that
+/// already holds the temporary index and is owned by the user, so nobody
+/// else can interfere. The filename includes the process ID and a timestamp,
+/// and it's created with `create_new`, so if a file with that name already
+/// exists, creation fails instead of following it.
 struct AskPass(PathBuf);
 
 impl AskPass {
@@ -365,13 +377,14 @@ impl AskPass {
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
-            // 만드는 순간부터 주인만 읽고 실행할 수 있게 합니다. 만든 뒤에
-            // 권한을 고치면 그 사이에 잠깐 열려 있습니다.
+            // Make it readable and executable by the owner only, from the moment
+            // it's created. Fixing permissions after the fact would leave it
+            // briefly world-accessible in between.
             options.mode(0o700);
         }
 
-        // create_new 는 O_EXCL 이라 이미 있는 항목(심볼릭 링크 포함)을 따라가지
-        // 않고 실패합니다.
+        // create_new maps to O_EXCL, so an existing entry (including a symlink)
+        // is never followed — creation just fails instead.
         let mut file = options.open(&path)?;
         std::io::Write::write_all(&mut file, body.as_bytes())?;
 
@@ -389,13 +402,13 @@ impl Drop for AskPass {
     }
 }
 
-/// 임시 인덱스와 다른 work-tree 로 git 을 부릅니다.
+/// Runs git against a temporary index and a different work-tree.
 ///
-/// 작업 중인 인덱스를 건드리지 않는 것이 핵심입니다. 그냥 `git add` 를 쓰면
-/// 편집 중이던 스테이징이 배포 때마다 뒤엎힙니다.
+/// The point is to leave the real index untouched. A plain `git add` would
+/// stomp on whatever was staged for editing every time we deploy.
 ///
-/// `git_dir` 과 `work_tree` 는 **반드시 절대 경로**여야 합니다. 작업 디렉터리를
-/// dist 로 바꾸기 때문에, 상대 경로를 주면 git 이 `dist/.git` 을 찾습니다.
+/// `git_dir` and `work_tree` **must be absolute paths**. Since we change the
+/// working directory to dist, a relative path would make git look for `dist/.git`.
 fn git_with_index(
     git_dir: &Path,
     index: &Path,
@@ -436,7 +449,7 @@ fn remote_url(root: &Path, remote: &str) -> Result<String, Error> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GitHub 주소 알아내기
+// Figuring out the GitHub URL
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, PartialEq)]
@@ -446,9 +459,9 @@ pub struct Repo {
 }
 
 impl Repo {
-    /// 이 리포지터리가 받게 될 Pages 주소.
+    /// The Pages URL this repository will get.
     pub fn pages_url(&self) -> String {
-        // `<사용자>.github.io` 리포지터리만 도메인 루트를 씁니다.
+        // Only a `<user>.github.io` repository lives at the domain root.
         if self.name.eq_ignore_ascii_case(&format!("{}.github.io", self.owner)) {
             format!("https://{}.github.io/", self.owner.to_lowercase())
         } else {
@@ -461,7 +474,7 @@ impl Repo {
     }
 }
 
-/// 리모트 주소에서 소유자와 이름을 뽑습니다. GitHub 이 아니면 `None`.
+/// Extracts the owner and name from a remote URL. `None` if it isn't GitHub.
 pub fn parse_github(url: &str) -> Option<Repo> {
     let url = url.trim().trim_end_matches('/');
     let rest = if let Some(rest) = url.strip_prefix("git@github.com:") {
@@ -514,8 +527,8 @@ mod tests {
         assert!(parse_github("https://github.com/aiden").is_none());
     }
 
-    /// `<사용자>.github.io` 는 도메인 루트에 놓입니다. 이걸 틀리면 안내하는
-    /// 주소가 404 가 됩니다.
+    /// `<user>.github.io` lives at the domain root. Getting this wrong means
+    /// the URL we point the user to comes back 404.
     #[test]
     fn user_site_repository_lives_at_the_domain_root() {
         let user_site = parse_github("https://github.com/Aiden/Aiden.github.io").unwrap();
@@ -525,9 +538,9 @@ mod tests {
         assert_eq!(project.pages_url(), "https://aiden.github.io/card/");
     }
 
-    /// askpass 스크립트는 공용 임시 폴더에 두지 않습니다. 유닉스의 /tmp 는
-    /// 누구나 쓸 수 있어서, 이름이 예측 가능하면 심볼릭 링크를 걸어두거나
-    /// 내용을 바꿔치기해 사용자 권한으로 코드를 돌릴 수 있습니다.
+    /// The askpass script is never placed in a shared temp folder. Unix's /tmp
+    /// is writable by anyone, so a predictable filename would let someone plant
+    /// a symlink there or swap the content to run code under the user's privileges.
     #[test]
     fn askpass_lives_in_the_repository_not_shared_temp() {
         let dir = std::env::temp_dir().join("profileit-askpass-home");
@@ -544,11 +557,11 @@ mod tests {
             "공용 임시 폴더에 그대로 놓였습니다"
         );
 
-        // 이름이 고정되어 있으면 남이 미리 자리를 잡아둘 수 있습니다.
+        // If the name were fixed, someone else could stake out that spot ahead of time.
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         assert!(name.contains(&std::process::id().to_string()), "이름: {name}");
 
-        // 같은 자리를 두 번 만들면 안 됩니다 — 하나가 다른 하나를 덮어씁니다.
+        // Creating the same spot twice must not happen — one would overwrite the other.
         let second = AskPass::create(&dir).expect("두 번째");
         assert_ne!(second.path(), path);
 
@@ -556,7 +569,7 @@ mod tests {
         assert!(!path.exists(), "쓰고 나서 지워지지 않았습니다");
     }
 
-    /// 이미 자리를 차지한 항목(심볼릭 링크 포함)을 따라가지 않고 실패해야 합니다.
+    /// Must fail rather than follow an entry that's already there (including a symlink).
     #[test]
     fn askpass_refuses_to_overwrite_an_existing_path() {
         let dir = std::env::temp_dir().join("profileit-askpass-clash");
@@ -565,7 +578,7 @@ mod tests {
 
         let helper = AskPass::create(&dir).expect("askpass");
         let path = helper.path().to_path_buf();
-        std::mem::forget(helper); // 파일을 남겨둔 채 같은 경로를 다시 노립니다
+        std::mem::forget(helper); // Leave the file behind and target the same path again
 
         let mut options = std::fs::OpenOptions::new();
         let clash = options.write(true).create_new(true).open(&path);
@@ -593,7 +606,7 @@ mod tests {
         assert_eq!(count_files(&dir), 3);
     }
 
-    /// Jekyll 을 끄지 않으면 `_` 로 시작하는 파일이 조용히 사라집니다.
+    /// Without disabling Jekyll, files starting with `_` silently disappear.
     #[test]
     fn prepare_writes_nojekyll_and_cname() {
         let dir = std::env::temp_dir().join("profileit-deploy-prepare");

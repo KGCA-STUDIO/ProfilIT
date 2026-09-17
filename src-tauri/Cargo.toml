@@ -3,7 +3,7 @@ name = "profileit-desktop"
 version = "0.1.0"
 edition = "2021"
 description = "ProfileIT 데스크톱 편집기"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 [build-dependencies]
 tauri-build = "2"

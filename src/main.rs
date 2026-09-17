@@ -1,7 +1,7 @@
 //! profileit CLI.
 //!
-//! 실제 일은 전부 라이브러리(`src/lib.rs`)에 있습니다. 여기서는 명령을 고르고
-//! 결과를 사람이 읽을 수 있게 출력하는 것만 합니다.
+//! All the real work lives in the library (`src/lib.rs`). This file just
+//! picks a command and prints the result in a human-readable way.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -60,13 +60,13 @@ fn print_usage(strings: &Strings) {
     );
 }
 
-/// 한 줄을 화면 언어로 조립해 내보냅니다.
+/// Renders and prints a single line in the display language.
 fn say(message: Message, strings: &Strings) {
     eprintln!("{}", message.render(strings));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 명령
+// Commands
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn run_check(path: &Path) -> ExitCode {
@@ -120,8 +120,9 @@ fn run_build(path: &Path) -> ExitCode {
     }
 }
 
-/// 배포. **먼저 빌드합니다** — 고친 내용이 반영되지 않은 dist 를 올리는 것이
-/// 가장 흔한 실수라서, 올릴 것을 그 자리에서 다시 만듭니다.
+/// Deploy. **Builds first** — uploading a stale dist that doesn't reflect
+/// recent edits is the most common mistake, so we always rebuild what's about
+/// to be uploaded right here.
 fn run_deploy(path: &Path) -> ExitCode {
     let (config, diagnostics) = match load(path) {
         Err(err) => return report_load_error(path, err),
@@ -138,7 +139,7 @@ fn run_deploy(path: &Path) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    // 연결해 둔 토큰이 있으면 씁니다. 없으면 git 자격증명에 맡깁니다.
+    // Use a connected token if there is one; otherwise fall back to git's own credentials.
     let token = stored_token();
     match deploy::publish(&config, root, &dist, token.as_ref()) {
         Err(err) => {
@@ -185,10 +186,11 @@ fn run_deploy(path: &Path) -> ExitCode {
     }
 }
 
-/// 저장된 GitHub 토큰.
+/// The stored GitHub token.
 ///
-/// 편집기 기능을 끄고 빌드하면 자격증명 저장소를 읽을 수단이 없으므로 항상
-/// `None` 입니다. 그때는 git 이 이미 갖고 있는 자격증명으로 푸시합니다.
+/// Always `None` when built without the editor feature, since there's no way
+/// to read the credential store in that case. Pushes then rely on whatever
+/// credentials git already has.
 fn stored_token() -> Option<deploy::Token> {
     #[cfg(feature = "editor")]
     {
@@ -221,8 +223,8 @@ fn run_init(path: &Path) -> ExitCode {
 
 #[cfg(feature = "editor")]
 fn run_edit(path: &Path) -> ExitCode {
-    // 여기서는 검증 실패로 막지 않습니다 — 설정이 깨졌을 때야말로 편집기가
-    // 필요하고, 편집기 안에서 오류를 보여주며 고칠 수 있습니다.
+    // We don't block on validation failures here — a broken config is exactly
+    // when the editor is needed, so errors are shown and fixed inside it instead.
     match profileit::serve::run(path) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
@@ -236,7 +238,7 @@ fn run_edit(path: &Path) -> ExitCode {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 출력
+// Output
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn report_load_error(path: &Path, err: LoadError) -> ExitCode {
@@ -250,10 +252,11 @@ fn report_load_error(path: &Path, err: LoadError) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// 터미널에 쓸 언어.
+/// The language to use for terminal output.
 ///
-/// `PROFILEIT_LANG` 이 있으면 그것을, 없으면 이 명함의 기본 언어를 씁니다 —
-/// 한국어 명함을 쓰는 사람에게 영어 오류를 내미는 것보다 낫습니다.
+/// Uses `PROFILEIT_LANG` if set, otherwise falls back to this card's default
+/// language — better than showing English errors to someone working on a
+/// Korean card.
 fn cli_strings(path: &Path, config: Option<&profileit::config::Config>) -> Strings {
     let root = project_root(path);
     let chosen = std::env::var("PROFILEIT_LANG")

@@ -1,6 +1,6 @@
 /*
- * 편집기 화면. 만들어지는 명함과는 무관한 스타일이라 토큰을 쓰지 않습니다
- * (명함 테마를 바꿔도 편집기는 그대로여야 합니다).
+ * Editor UI. Independent of the card being built, so it doesn't use theme
+ * tokens (the editor should stay the same even if the card theme changes).
  */
 
 :root {
@@ -31,7 +31,7 @@ body {
     "Malgun Gothic", sans-serif;
 }
 
-/* ─── 상단 바 ─────────────────────────────────────────────────────────── */
+/* ─── Top bar ───────────────────────────────────────────────────────────── */
 .ed-bar {
   display: flex;
   align-items: center;
@@ -44,7 +44,7 @@ body {
   flex: none;
 }
 
-/* 버튼 글자가 세로로 쪼개지지 않게 합니다. */
+/* Keeps button labels from wrapping mid-word. */
 .ed-bar button {
   white-space: nowrap;
 }
@@ -58,8 +58,8 @@ body {
 .ed-bar__actions {
   display: flex;
   align-items: center;
-  /* 창이 좁아지면 줄을 바꿉니다. 안 그러면 마지막 버튼이 오른쪽으로
-     잘려 나가 눌리지 않습니다. */
+  /* Wraps to a new line when the window narrows. Otherwise the last button
+     gets clipped off the right edge and becomes unclickable. */
   flex-wrap: wrap;
   gap: 8px;
   margin-left: auto;
@@ -119,7 +119,7 @@ body {
   font-size: 12px;
 }
 
-/* ─── 언어 탭 ─────────────────────────────────────────────────────────── */
+/* ─── Language tabs ─────────────────────────────────────────────────────── */
 .ed-langs {
   display: inline-flex;
   gap: 2px;
@@ -150,8 +150,9 @@ body {
   color: #fff;
 }
 
-/* ─── 화면 언어 고르개 ────────────────────────────────────────────────────
-   명함 언어 탭과 헷갈리지 않게 작고 수수하게 둡니다. */
+/* ─── UI language picker ────────────────────────────────────────────────────
+   Kept small and understated so it doesn't get confused with the card's
+   language tabs. */
 .ed-uilangs {
   display: inline-flex;
   gap: 1px;
@@ -185,7 +186,7 @@ body {
   color: var(--ed-text);
 }
 
-/* ─── 본문 · 미리보기 ─────────────────────────────────────────────────── */
+/* ─── Body & preview ────────────────────────────────────────────────────── */
 .ed-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
@@ -228,7 +229,7 @@ body {
   min-height: 0;
 }
 
-/* ─── 폼 ──────────────────────────────────────────────────────────────── */
+/* ─── Form ──────────────────────────────────────────────────────────────── */
 .ed-group {
   margin-bottom: 14px;
   border: 1px solid var(--ed-line);
@@ -262,9 +263,10 @@ body {
 }
 
 /*
- * 본문은 한 단계 낮은 바탕색입니다. 입력칸이 늘 흰색이라, 어느 그룹에
- * 들어가든 칸 경계가 또렷하게 보입니다. 흰 바탕에 흰 입력칸을 두면
- * 테두리 하나에만 기대게 되어 칸들이 뭉쳐 보입니다.
+ * The body sits one shade darker than the panel. Inputs are always white,
+ * so their edges stay clearly visible no matter which group they're in.
+ * A white input on a white background would rely on a single border alone,
+ * and the fields would blur together.
  */
 .ed-group__body {
   padding: 10px 13px 14px;
@@ -290,8 +292,8 @@ body {
 .ed-field select {
   width: 100%;
   padding: 7px 9px;
-  /* 회색 항목 상자 위에서도 입력칸이 하얗게 떠 보이도록 테두리를 조금 더
-     또렷하게 잡습니다. */
+  /* A slightly more defined border so the input still reads as white even
+     against the gray item box behind it. */
   border: 1px solid #cdd8e0;
   border-radius: 7px;
   background: #fff;
@@ -313,7 +315,7 @@ body {
   border-color: var(--ed-accent);
 }
 
-/* 번역 중인 항목. 기본 언어 원문이 placeholder 로 보입니다. */
+/* A field currently being translated. The default-language text shows as its placeholder. */
 .ed-field--translating input,
 .ed-field--translating textarea {
   background: #fffdf4;
@@ -362,7 +364,7 @@ body {
   flex: none;
 }
 
-/* ─── 이미지 ──────────────────────────────────────────────────────────── */
+/* ─── Image ─────────────────────────────────────────────────────────────── */
 .ed-image {
   display: flex;
   gap: 10px;
@@ -399,13 +401,14 @@ body {
   font-size: 12px;
 }
 
-/* ─── 섹션·항목 목록 ───────────────────────────────────────────────────── */
+/* ─── Section / item list ──────────────────────────────────────────────── */
 /*
- * 항목 상자.
+ * Item box.
  *
- * 같은 색 위의 같은 색 상자는 구분이 안 됩니다. 단계가 내려갈 때마다 배경이
- * 번갈아 바뀌도록 해서, 몇 겹으로 중첩되든 경계가 보이게 합니다.
- * (그룹 본문=회색 → 항목=흰색 → 그 안 항목=회색 → …)
+ * A box the same color as what's behind it is indistinguishable from it.
+ * The background alternates at each nesting level so boundaries stay
+ * visible no matter how deep the nesting goes.
+ * (group body = gray → item = white → nested item = gray → …)
  */
 .ed-item {
   margin-top: 12px;
@@ -423,7 +426,7 @@ body {
   background: var(--ed-panel);
 }
 
-/* 항목 머리. 아래 선을 그어 제목과 내용을 갈라줍니다. */
+/* Item header. A bottom line separates the title from the content. */
 .ed-item__head {
   display: flex;
   align-items: center;
@@ -460,7 +463,7 @@ body {
   font-size: 13px;
 }
 
-/* ─── 대화상자 ────────────────────────────────────────────────────────── */
+/* ─── Dialog ────────────────────────────────────────────────────────────── */
 .ed-dialog {
   width: min(520px, 92vw);
   padding: 0;
@@ -573,7 +576,7 @@ body {
   font-weight: 600;
 }
 
-/* ─── 진단 ────────────────────────────────────────────────────────────── */
+/* ─── Diagnostics ───────────────────────────────────────────────────────── */
 .ed-diagnostics {
   flex: none;
   max-height: 27vh;

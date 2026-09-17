@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.80"
 description = "섹션 기반 온라인 명함을 만드는 정적 사이트 생성기"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 # 루트 패키지가 곧 워크스페이스 루트입니다. 데스크톱 앱(src-tauri)이
 # 이 크레이트를 라이브러리로 씁니다.

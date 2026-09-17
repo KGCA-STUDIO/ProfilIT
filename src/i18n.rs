@@ -1,26 +1,30 @@
-//! 다국어.
+//! Internationalization.
 //!
-//! 두 가지를 구분합니다.
+//! Two things are kept distinct here.
 //!
-//! - **내용** — 사용자가 쓴 글. `profile.toml` 안에 언어별로 적습니다([`Text`]).
-//! - **UI 문구** — "연락처 저장" 같은 고정 문구. `locales/<코드>.json` 에 있습니다([`Strings`]).
+//! - **Content** — text the user writes. Given per language inside
+//!   `profile.toml` ([`Text`]).
+//! - **UI strings** — fixed phrases like "Save contact." Live in
+//!   `locales/<code>.json` ([`Strings`]).
 //!
-//! 내용을 별도 파일로 빼지 않고 설정 안에 두는 이유: 번역이 원문 바로 옆에
-//! 있어야 빠뜨린 항목이 눈에 띕니다. 경로로 연결하는 방식(`sections[1].title`)은
-//! 섹션 순서만 바꿔도 조용히 어긋납니다.
+//! Why content lives inline in the config instead of a separate file: keeping
+//! a translation right next to its source text makes it obvious when one is
+//! missing. A path-based approach (`sections[1].title`) silently drifts out
+//! of sync the moment section order changes.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// 번역 가능한 문자열.
+/// A translatable string.
 ///
-/// 한 언어만 쓰면 평범한 문자열 그대로입니다. 기존 설정 파일이 그대로 읽히고,
-/// 번역이 필요한 항목만 골라서 표로 바꾸면 됩니다.
+/// With only one language, it's just a plain string. Existing config files
+/// keep working as-is, and you can upgrade individual entries to a table only
+/// where translation is actually needed.
 ///
 /// ```toml
-/// title = "학력"                                  # 모든 언어 공통
-/// title = { ko = "학력", en = "Education" }        # 언어별
+/// title = "학력"                                  # same for every language
+/// title = { ko = "학력", en = "Education" }        # per language
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -30,10 +34,12 @@ pub enum Text {
 }
 
 impl Text {
-    /// 해당 언어의 문자열. 없으면 `fallback` 언어, 그것도 없으면 아무거나.
+    /// The string for a given language. Falls back to `fallback`, then to
+    /// whatever's available.
     ///
-    /// 번역이 빠졌다고 빈 화면을 보여주는 것보다 원문이라도 보여주는 쪽이
-    /// 낫습니다. 빠진 번역은 검증에서 경고로 알립니다.
+    /// Showing the source text is better than showing a blank when a
+    /// translation is missing. Missing translations are reported as
+    /// warnings during validation.
     pub fn get<'a>(&'a self, lang: &str, fallback: &str) -> &'a str {
         match self {
             Text::Plain(value) => value,
@@ -46,10 +52,11 @@ impl Text {
         }
     }
 
-    /// 해당 언어로 실제 번역이 있는지. 검증에서 빠진 번역을 찾을 때 씁니다.
+    /// Whether an actual translation exists for the given language. Used by
+    /// validation to find missing translations.
     pub fn has(&self, lang: &str) -> bool {
         match self {
-            // 모든 언어 공통이므로 어떤 언어로 물어도 있습니다.
+            // Shared across all languages, so it's present no matter which one is asked for.
             Text::Plain(value) => !value.trim().is_empty(),
             Text::Translated(map) => map.get(lang).is_some_and(|v| !v.trim().is_empty()),
         }
@@ -72,17 +79,17 @@ impl From<&str> for Text {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UI 문구
+// UI strings
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 내장 번역. 언어를 추가하려면 JSON 파일을 만들고 여기 한 줄 넣으면 됩니다.
+/// Built-in translations. To add a language, create the JSON file and add one line here.
 const BUILTIN: &[(&str, &str)] = &[
     ("ko", include_str!("../locales/ko.json")),
     ("en", include_str!("../locales/en.json")),
     ("ja", include_str!("../locales/ja.json")),
 ];
 
-/// 한 언어의 UI 문구 모음.
+/// The set of UI strings for one language.
 #[derive(Debug, Clone, Default)]
 pub struct Strings {
     entries: BTreeMap<String, String>,
@@ -90,9 +97,9 @@ pub struct Strings {
 }
 
 impl Strings {
-    /// `lang` 의 문구를 불러옵니다. 프로젝트의 `locales/<lang>.json` 이 있으면
-    /// 내장 문구 위에 덮어씁니다 — 문구 하나만 바꾸려고 파일 전체를 적을
-    /// 필요가 없습니다.
+    /// Loads the strings for `lang`. If the project has a
+    /// `locales/<lang>.json`, it's layered on top of the built-in strings —
+    /// so overriding a single string doesn't require copying the whole file.
     pub fn load(lang: &str, project_root: &std::path::Path) -> Result<Strings, String> {
         let mut entries = builtin(lang).unwrap_or_default();
 
@@ -115,13 +122,13 @@ impl Strings {
 
         Ok(Strings {
             entries,
-            // 새로 추가된 키가 아직 번역되지 않았을 때를 위한 그물.
+            // Safety net for keys that were just added and don't have a translation yet.
             fallback: builtin("en").unwrap_or_default(),
         })
     }
 
-    /// 문구 하나. 없으면 영어, 그것도 없으면 키 자체를 돌려줍니다 —
-    /// 화면에 키가 보이면 무엇이 빠졌는지 바로 알 수 있습니다.
+    /// A single string. Falls back to English, then to the key itself —
+    /// seeing the raw key on screen makes it obvious what's missing.
     pub fn get<'a>(&'a self, key: &'a str) -> &'a str {
         self.entries
             .get(key)
@@ -130,7 +137,7 @@ impl Strings {
             .unwrap_or(key)
     }
 
-    /// `{이름}` 자리를 채웁니다.
+    /// Fills in `{name}` placeholders.
     pub fn format(&self, key: &str, args: &[(&str, &str)]) -> String {
         let mut text = self.get(key).to_string();
         for (name, value) in args {
@@ -139,8 +146,9 @@ impl Strings {
         text
     }
 
-    /// 접두사로 시작하는 문구만 추립니다. 편집기 UI 문구(`editor.`)를
-    /// 명함 문구와 한 파일에 두되 필요한 쪽만 꺼내 쓰기 위한 것입니다.
+    /// Picks out only the strings starting with a given prefix. Lets editor
+    /// UI strings (`editor.`) live in the same file as card-facing strings
+    /// while only pulling out the ones you need.
     pub fn with_prefix<'a>(&'a self, prefix: &str) -> BTreeMap<&'a str, &'a str> {
         self.entries
             .iter()
@@ -149,7 +157,7 @@ impl Strings {
             .collect()
     }
 
-    /// 브라우저에서 쓰는 문구만 추린 것. 렌더러가 JSON 으로 페이지에 넣습니다.
+    /// The subset of strings used in the browser. The renderer embeds this as JSON on the page.
     pub fn client_subset(&self) -> BTreeMap<&str, &str> {
         const KEYS: [&str; 4] = [
             "toast.copied",
@@ -163,7 +171,7 @@ impl Strings {
 
 fn builtin(lang: &str) -> Option<BTreeMap<String, String>> {
     let source = BUILTIN.iter().find(|(code, _)| *code == lang)?.1;
-    // 내장 파일은 빌드 시점에 포함되므로 깨져 있으면 우리 잘못입니다.
+    // Built-in files are bundled at build time, so if this is malformed it's on us.
     Some(serde_json::from_str(source).expect("내장 locale JSON 이 올바르지 않습니다"))
 }
 
@@ -171,9 +179,10 @@ pub fn builtin_codes() -> Vec<&'static str> {
     BUILTIN.iter().map(|(code, _)| *code).collect()
 }
 
-/// 언어 선택기에 보일 이름. 각 언어 파일이 자기 이름을 직접 적습니다
-/// (`language.name`). 선택기에는 늘 그 언어 자신의 표기로 보이는 편이
-/// 찾기 쉽습니다 — 한국어 화면이어도 "일본어" 보다 "日本語" 가 낫습니다.
+/// The name shown in the language switcher. Each language file supplies its
+/// own name (`language.name`). Showing a language in its own script is
+/// always easier to spot — "日本語" reads better than "Japanese" even on a
+/// Korean-language page.
 pub fn language_name(lang: &str, project_root: &std::path::Path) -> String {
     Strings::load(lang, project_root)
         .map(|s| s.get("language.name").to_string())
@@ -208,7 +217,7 @@ mod tests {
         assert!(!text.has("en"));
     }
 
-    /// 기본 언어조차 없으면 빈 화면 대신 있는 것이라도 보여줍니다.
+    /// Even if the default language is missing, show whatever exists instead of a blank screen.
     #[test]
     fn falls_back_to_any_available_language() {
         let text = translated(&[("ja", "学歴")]);
@@ -227,7 +236,7 @@ mod tests {
         let ko = builtin("ko").unwrap();
         for code in builtin_codes() {
             let other = builtin(code).unwrap();
-            // 키가 어긋나면 어떤 언어에서는 화면에 키가 그대로 보입니다.
+            // If keys drift apart, some language ends up showing the raw key on screen.
             let missing: Vec<_> = ko.keys().filter(|k| !other.contains_key(*k)).collect();
             assert!(missing.is_empty(), "{code} 에 빠진 키: {missing:?}");
         }
@@ -247,7 +256,7 @@ mod tests {
         );
     }
 
-    /// 없는 키는 키 자체가 보여야 무엇이 빠졌는지 알 수 있습니다.
+    /// An unknown key should return itself so it's obvious what's missing.
     #[test]
     fn unknown_key_returns_itself() {
         let strings = Strings::default();

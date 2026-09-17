@@ -1,12 +1,15 @@
 /*
- * ProfileIT 편집기.
+ * ProfileIT editor.
  *
- * 설정 전체를 JSON 으로 들고 있다가 저장할 때 통째로 보냅니다. 서버가
- * toml_edit 으로 기존 파일에 병합하므로 주석은 보존됩니다.
+ * Holds the whole config as JSON and sends it in one piece on save. The
+ * server merges it into the existing file with toml_edit, so comments in
+ * the file are preserved.
  *
- * 번역 가능한 값(Text)은 문자열이거나 { ko: "...", en: "..." } 입니다.
- * 기본 언어를 고칠 때는 문자열 그대로 두고, 다른 언어를 처음 입력하는 순간
- * 표로 바꿉니다 — 번역하지 않은 항목의 TOML 을 어지럽히지 않기 위해서입니다.
+ * A translatable value (Text) is either a plain string or a
+ * { ko: "...", en: "..." } map. Editing the default language keeps it as a
+ * plain string; typing into another language for the first time is what
+ * turns it into a map — this keeps the TOML clean for entries nobody has
+ * translated yet.
  */
 (function () {
   "use strict";
@@ -16,21 +19,22 @@
   var state = {
     config: null,
     meta: null,
-    lang: null, // 지금 편집 중인 언어 (명함 내용)
+    lang: null, // Language currently being edited (card content)
     defaultLang: null,
-    uiLang: null, // 편집기 화면 언어. 명함 언어와 별개입니다
-    diagnostics: null, // 마지막 검증 결과. 화면 언어를 바꿀 때 다시 그립니다
+    uiLang: null, // Editor's own UI language. Independent of the card's language
+    diagnostics: null, // Last validation results. Redrawn when the UI language changes
     dirty: false,
   };
 
   var panel = document.getElementById("panel");
 
-  // ─── 화면 문구 ────────────────────────────────────────────────────────────
+  // ─── UI strings ───────────────────────────────────────────────────────────
 
-  // 서버가 보낸 메시지를 화면 언어로 조립합니다.
+  // Assembles a message from the server into the current UI language.
   //
-  // 서버는 완성된 문장이 아니라 `{key, args}` 를 보냅니다. 어느 언어로 읽을지
-  // 정하는 쪽은 화면이기 때문입니다. 옛 형태(문자열)도 그대로 통과시킵니다.
+  // The server sends `{key, args}` rather than a finished sentence, since
+  // it's the UI's job to decide which language to render it in. The old
+  // shape (a plain string) is passed through as-is too.
   function msg(value) {
     if (!value) return "";
     if (typeof value === "string") return value;
@@ -38,7 +42,7 @@
     return String(value);
   }
 
-  // 폰트 목록. 서버는 이름 대신 키를 보내므로 여기서 화면 언어로 풉니다.
+  // Font list. The server sends keys instead of names, so we resolve them to the UI language here.
   function fontOptions() {
     return (state.meta.fonts || []).map(function (f) {
       return { value: f.value, label: t(f.labelKey), weights: f.weights };
@@ -46,19 +50,20 @@
   }
 
   /**
-   * 편집기 화면 문구.
+   * Editor UI strings.
    *
-   * 명함 내용의 언어와 **별개**입니다. 한국어 화면으로 영어 명함을 쓰는 일이
-   * 흔하기 때문입니다. 서버가 세 언어를 한 번에 주므로 전환에 왕복이 없습니다.
+   * **Independent** of the card content's language — it's common to edit an
+   * English card from a Korean UI. The server sends all three languages at
+   * once, so switching between them needs no round trip.
    */
   function t(key, args) {
     var table = (state.meta && state.meta.uiStrings && state.meta.uiStrings[state.uiLang]) || {};
-    // 없는 키는 키 자체를 보여줍니다. 무엇이 빠졌는지 화면에서 바로 보입니다.
+    // A missing key falls back to showing the key itself, so it's obvious right away what's missing.
     var text = table[key] || key;
 
     Object.keys(args || {}).forEach(function (name) {
       var value = args[name];
-      // "@키" 는 인자 자체가 번역 대상이라는 표시입니다 (예: "푸시" 실패).
+      // An "@key" argument marks the value itself as translatable (e.g. a "push" failure).
       if (typeof value === "string" && value.charAt(0) === "@") {
         value = table[value.slice(1)] || value.slice(1);
       }
@@ -67,13 +72,13 @@
     return text;
   }
 
-  /** 이 PC 가 기억하는 화면 언어. 없으면 브라우저 설정을 따릅니다. */
+  /** UI language remembered by this machine. Falls back to the browser's setting if none. */
   function initialUiLang(available) {
     var saved = null;
     try {
       saved = localStorage.getItem(UI_LANG_KEY);
     } catch (err) {
-      // 저장소를 못 읽어도 기본값으로 굴러갑니다.
+      // If we can't read storage, we just fall back to the default.
     }
     if (saved && available.indexOf(saved) >= 0) return saved;
 
@@ -88,18 +93,18 @@
     try {
       localStorage.setItem(UI_LANG_KEY, code);
     } catch (err) {
-      // 기억하지 못해도 이번 실행은 문제없습니다.
+      // If we can't remember it, this session still works fine.
     }
     document.documentElement.lang = code;
     applyStaticText();
     renderUiLangPicker();
     renderLangTabs();
     render();
-    // 진단 줄도 서버 문구라 같이 갈아끼웁니다.
+    // The diagnostics lines are server strings too, so re-render them along with everything else.
     if (state.diagnostics) showDiagnostics(state.diagnostics);
   }
 
-  /** HTML 에 박혀 있는 문구를 현재 화면 언어로 채웁니다. */
+  /** Fills in the text baked into the HTML using the current UI language. */
   function applyStaticText() {
     document.title = t("editor.title");
     setText(".ed-bar__title", t("editor.title"));
@@ -120,10 +125,11 @@
   }
 
   /**
-   * 화면 언어 고르개.
+   * UI language picker.
    *
-   * 명함 언어 탭과 나란히 두면 헷갈려서 오른쪽 끝에 작게 둡니다 — 한 번
-   * 정하면 거의 바꾸지 않는 설정이기 때문입니다.
+   * Placed small in the top-right corner rather than next to the card
+   * language tabs, since sitting them side by side would be confusing —
+   * this is a setting people rarely change once they've picked it.
    */
   function renderUiLangPicker() {
     var host = document.getElementById("ui-lang");
@@ -153,19 +159,20 @@
   var previewEl = document.getElementById("preview");
   var langTabs = document.getElementById("lang-tabs");
 
-  // ─── 번역 가능한 값 ───────────────────────────────────────────────────────
+  // ─── Translatable values ────────────────────────────────────────────────
 
   function readText(value) {
     if (value == null) return "";
     if (typeof value === "string") {
-      // 평문은 모든 언어 공통입니다. 다른 언어 탭에서는 비워 두고,
-      // placeholder 로 원문을 보여줘 번역할 대상을 알 수 있게 합니다.
+      // A plain string is shared by every language. Leave it blank on other
+      // language tabs, showing the original as a placeholder so it's clear
+      // what needs translating.
       return state.lang === state.defaultLang ? value : "";
     }
     return value[state.lang] || "";
   }
 
-  /** 기본 언어 원문. 번역 탭의 placeholder 로 씁니다. */
+  /** Default-language original text, used as the placeholder on translation tabs. */
   function baseText(value) {
     if (value == null) return "";
     if (typeof value === "string") return value;
@@ -177,7 +184,7 @@
 
     if (value == null || typeof value === "string") {
       if (isDefault) return next;
-      if (!next) return value; // 번역을 비우면 평문 그대로 둡니다
+      if (!next) return value; // Clearing the translation leaves the plain string as-is
       var created = {};
       if (value) created[state.defaultLang] = value;
       created[state.lang] = next;
@@ -188,14 +195,14 @@
     if (next) map[state.lang] = next;
     else delete map[state.lang];
 
-    // 기본 언어 하나만 남으면 평문으로 되돌립니다.
+    // If only the default language is left, revert back to a plain string.
     var keys = Object.keys(map);
     if (keys.length === 0) return "";
     if (keys.length === 1 && keys[0] === state.defaultLang) return map[state.defaultLang];
     return map;
   }
 
-  // ─── 작은 DOM 도우미 ──────────────────────────────────────────────────────
+  // ─── Small DOM helpers ────────────────────────────────────────────────────
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -212,11 +219,12 @@
   }
 
   /**
-   * 바깥 주소를 기본 브라우저로 엽니다.
+   * Opens an outside address in the default browser.
    *
-   * 데스크톱 앱의 웹뷰는 `window.open` 을 막습니다. 막지 않더라도 편집기 창이
-   * 외부 사이트로 넘어가면 돌아올 방법이 마땅치 않아서, 서버에 부탁해 바깥
-   * 브라우저로 보냅니다.
+   * The desktop app's webview blocks `window.open`. And even where it
+   * doesn't, if the editor window navigated to an external site there'd be
+   * no good way back, so we ask the server to open it in the outside
+   * browser instead.
    */
   function openExternal(url) {
     if (!url) return;
@@ -225,13 +233,13 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: url }),
     }).catch(function () {
-      // 일반 브라우저에서 편집기를 열어둔 경우를 위한 대비책.
+      // Fallback for when the editor is open in a regular browser.
       window.open(url, "_blank");
     });
   }
 
-  // target="_blank" 링크를 모두 가로챕니다. 새로 만드는 링크마다 따로
-  // 처리하는 것보다, 한 곳에서 잡는 편이 빠뜨릴 여지가 없습니다.
+  // Intercept every target="_blank" link in one place. Catching them all
+  // here leaves no room for a newly-created link to slip through unhandled.
   document.addEventListener("click", function (event) {
     var link = event.target.closest('a[target="_blank"]');
     if (!link) return;
@@ -249,16 +257,16 @@
     statusEl.className = "ed-status" + (isError ? " ed-status--error" : "");
   }
 
-  /** 값을 고치고 화면을 다시 그립니다. 구조가 바뀌는 편집에 씁니다. */
+  /** Mutates the value and re-renders. Used for edits that change structure. */
   function update(fn) {
     fn();
     changed();
     render();
   }
 
-  // ─── 입력 위젯 ────────────────────────────────────────────────────────────
+  // ─── Input widgets ──────────────────────────────────────────────────────
 
-  /** 번역 가능한 한 줄 입력. */
+  /** A translatable single-line input. */
   function textField(label, owner, key, options) {
     options = options || {};
     var translating = state.lang !== state.defaultLang;
@@ -280,7 +288,7 @@
     );
   }
 
-  /** 번역하지 않는 한 줄 입력(URL, 경로 등). */
+  /** A non-translatable single-line input (URL, path, etc). */
   function plainField(label, owner, key, options) {
     options = options || {};
     var input = el("input", {
@@ -351,8 +359,8 @@
   }
 
   /**
-   * 이미지 필드. 경로를 직접 적을 수도 있고 파일을 골라 올릴 수도 있습니다.
-   * 올린 파일은 서버가 assets/ 에 저장하고 상대 경로를 돌려줍니다.
+   * Image field. You can type a path directly or choose a file to upload.
+   * The server saves uploaded files under assets/ and returns the relative path.
    */
   function imageField(label, owner, key, kind) {
     var path = el("input", {
@@ -369,7 +377,7 @@
     var thumb = el("img", { class: "ed-thumb", alt: "" });
     function refreshThumb() {
       if (owner[key]) {
-        // 캐시 때문에 옛 사진이 남지 않도록 시각을 붙입니다.
+        // Append a timestamp so the cache doesn't keep serving the old photo.
         thumb.src = "/preview/" + owner[key] + "?t=" + Date.now();
         thumb.hidden = false;
       } else {
@@ -465,7 +473,7 @@
     return el("div", { class: "ed-row" }, children);
   }
 
-  /** 항목 하나를 감싸는 상자. 위·아래 이동과 삭제가 붙습니다. */
+  /** Box wrapping a single item. Comes with move up/down and delete. */
   function itemBox(title, list, index, children, extraButtons) {
     var head = el("div", { class: "ed-item__head" }, [
       el("span", { class: "ed-item__title", text: title }),
@@ -522,7 +530,7 @@
     return box;
   }
 
-  // ─── 화면 구성 ────────────────────────────────────────────────────────────
+  // ─── Layout ───────────────────────────────────────────────────────────────
 
   function render() {
     var config = state.config;
@@ -554,8 +562,9 @@
           selectField(t("editor.social.platform"), social, "platform", state.meta.platforms),
           plainField(t("editor.social.url"), social, "url"),
         ]),
-        // 플랫폼과 상관없이 늘 보여줍니다. custom 이 아닐 때 숨겨두면, 내장
-        // 글리프 대신 진짜 로고를 넣고 싶은 사람이 칸이 있는 줄도 모릅니다.
+        // Always shown regardless of platform. Hiding it unless custom is
+        // selected would leave anyone who wants a real logo instead of the
+        // built-in glyph unaware the field even exists.
         plainField(t("editor.social.icon"), social, "icon", { nullable: true }),
       ]);
     });
@@ -653,12 +662,12 @@
 
     if (section.type === "tags") {
       /*
-       * 태그는 두 가지 모양입니다.
-       *   "Rust" 또는 { ko: "요리" }           — 이모지 없음
-       *   { icon: "🍳", text: ... }            — 이모지 있음
-       * 편집기에서는 둘을 한 화면으로 보여주고, 이모지를 비우면 다시 앞쪽
-       * 모양으로 되돌립니다. 이모지를 안 쓰는 태그의 TOML 을 어지럽히지
-       * 않기 위해서입니다.
+       * Tags come in two shapes.
+       *   "Rust" or { ko: "요리" }             — no emoji
+       *   { icon: "🍳", text: ... }            — with emoji
+       * The editor shows both as one unified field, and clearing the emoji
+       * reverts back to the plain shape. This keeps the TOML clean for tags
+       * that don't use an emoji.
        */
       var nodes = items.map(function (_, i) {
         function isWithIcon(v) {
@@ -889,7 +898,7 @@
             var at = list.indexOf(lang.value);
             if (checked && at < 0) list.push(lang.value);
             if (!checked && at >= 0) list.splice(at, 1);
-            // 기본 언어는 항상 포함되어야 합니다.
+            // The default language must always be included.
             if (list.indexOf(site.lang) < 0) list.unshift(site.lang);
           });
         },
@@ -954,11 +963,11 @@
     });
   }
 
-  // ─── 진단 · 저장 ──────────────────────────────────────────────────────────
+  // ─── Diagnostics · Save ─────────────────────────────────────────────────
 
   function showDiagnostics(list) {
-    // 화면 언어를 바꾸면 이 줄들도 새 언어로 다시 그려야 합니다. 서버에 다시 묻지
-    // 않아도 되도록 마지막 목록을 들고 있습니다.
+    // If the UI language changes these lines need to be redrawn too, so we
+    // keep the last list around instead of asking the server again.
     state.diagnostics = list;
     diagnosticsEl.textContent = "";
     if (!list || !list.length) {
@@ -1032,10 +1041,10 @@
   }
 
   /**
-   * GitHub Pages 로 올립니다. 서버가 빌드까지 알아서 다시 합니다.
+   * Deploys to GitHub Pages. The server rebuilds automatically as part of this.
    *
-   * 저장하지 않은 변경이 있으면 먼저 알립니다 — 올린 뒤에야 빠진 것을
-   * 알아차리면 되돌리기가 번거롭습니다.
+   * If there are unsaved changes, we warn first — noticing something is
+   * missing only after deploying makes it a hassle to undo.
    */
   function deploy() {
     if (state.dirty && !confirm(t("editor.confirmDeploy"))) {
@@ -1066,7 +1075,7 @@
       });
   }
 
-  /** 올린 뒤 주소를 아래 진단 영역에 남깁니다. */
+  /** Leaves the resulting URL in the diagnostics area after deploying. */
   function showDeployResult(result) {
     diagnosticsEl.textContent = "";
     diagnosticsEl.hidden = false;
@@ -1093,15 +1102,17 @@
   }
 
   /**
-   * 실패했을 때 무엇을 해야 하는지 덧붙입니다.
+   * Appends guidance on what to do after a failure.
    *
-   * 서버가 보내는 오류 문구는 아직 한국어 고정이라 한국어로 맞춰봅니다.
-   * 서버 메시지를 다국어로 만들면 이 비교도 키 기반으로 바꿔야 합니다.
+   * The error text the server sends is still hardcoded in Korean, so we
+   * match against that for now. If server messages become multi-language,
+   * this comparison will need to switch to matching on the key instead.
    */
-  // 배포 실패에 덧붙일 한 줄 안내.
+  // A one-line hint appended after a failed deploy.
   //
-  // 예전에는 오류 문장에서 한국어 단어를 찾았습니다. 화면 언어가 셋이 되면서
-  // 그 방식은 영어·일본어에서 아무것도 못 찾게 됩니다. 이제 키로 봅니다.
+  // This used to look for Korean words in the error sentence. Once there
+  // were three UI languages, that approach could find nothing in English or
+  // Japanese. Now it matches on the key instead.
   function showDeployHelp(error) {
     var key = error && error.key;
     var hint = null;
@@ -1135,12 +1146,12 @@
   }
 
 
-  // ─── GitHub 연결 ──────────────────────────────────────────────────────────
+  // ─── GitHub connection ─────────────────────────────────────────────────────
 
   var githubDialog = document.getElementById("github-dialog");
   var githubBody = document.getElementById("github-body");
 
-  /** 연결 상태를 받아 대화상자를 엽니다. */
+  /** Fetches the connection state and opens the dialog. */
   function openGithub() {
     githubBody.textContent = "";
     githubBody.appendChild(el("p", { text: t("editor.gh.checking") }));
@@ -1162,7 +1173,7 @@
     else renderConnect(info);
   }
 
-  /** 아직 연결 전. 토큰을 받습니다. */
+  /** Not connected yet. Collects a token. */
   function renderConnect(info) {
     githubBody.appendChild(el("h2", { text: t("editor.gh.connectTitle") }));
 
@@ -1250,14 +1261,14 @@
           renderGithub({ connected: false, error: result.error, scopes: "repo", tokenPageUrl: "https://github.com/settings/tokens/new?scopes=repo" });
           return;
         }
-        openGithub(); // 연결됐으니 저장소 목록으로 넘어갑니다
+        openGithub(); // Now connected, so move on to the repo list
       })
       .catch(function (err) {
         renderGithub({ connected: false, error: err.message });
       });
   }
 
-  /** 연결됨. 저장소를 고르거나 만듭니다. */
+  /** Connected. Choose or create a repository. */
   function renderConnected(info) {
     var account = info.account || {};
 
@@ -1322,7 +1333,7 @@
     newName.style.font = "inherit";
 
     var privateBox = el("input", { type: "checkbox" });
-    // 명함은 공개해야 GitHub Pages 가 무료로 동작합니다.
+    // The card needs to be public for GitHub Pages to work for free.
     privateBox.checked = false;
 
     githubBody.appendChild(
@@ -1395,7 +1406,7 @@
       });
   }
 
-  // ─── 시작 ─────────────────────────────────────────────────────────────────
+  // ─── Startup ────────────────────────────────────────────────────────────────
 
   document.getElementById("save").addEventListener("click", save);
   document.getElementById("build").addEventListener("click", build);
@@ -1423,8 +1434,9 @@
       state.defaultLang = data.config.site.lang;
       state.lang = state.defaultLang;
 
-      // 화면 언어는 명함 언어와 별개입니다. 이 PC 가 기억하는 값이 먼저이고,
-      // 없으면 브라우저 설정을 따릅니다.
+      // The UI language is independent of the card's language. This
+      // machine's remembered value takes priority, falling back to the
+      // browser's setting if there isn't one.
       var available = (data.meta.languages || []).map(function (l) {
         return l.value;
       });

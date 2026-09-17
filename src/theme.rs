@@ -1,14 +1,15 @@
-//! `[theme]` 를 CSS 커스텀 프로퍼티로 옮깁니다.
+//! Turns `[theme]` into CSS custom properties.
 //!
-//! 이 모듈이 스키마와 스타일시트를 잇는 유일한 지점입니다. `styles.css` 는
-//! `--pf-*` 토큰을 소비만 하므로, 테마가 바뀌어도 스타일시트는 그대로 캐시에
-//! 남고 여기서 만든 인라인 `<style>` 블록만 달라집니다.
+//! This module is the single bridge between the schema and the stylesheet.
+//! `styles.css` only ever consumes `--pf-*` tokens, so when the theme changes,
+//! the stylesheet stays cached as-is and only the inline `<style>` block built
+//! here changes.
 
 use std::fmt::Write as _;
 
 use crate::config::{Background, Card, Font, PatternName, Sheet, Theme};
 
-/// `:root { ... }` 안에 들어갈 선언들을 만듭니다.
+/// Builds the declarations that go inside `:root { ... }`.
 pub fn css_variables(theme: &Theme) -> String {
     let mut css = String::new();
 
@@ -29,7 +30,7 @@ pub fn css_variables(theme: &Theme) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 배경
+// Background
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn background_variables(background: &Background, css: &mut String) {
@@ -65,12 +66,12 @@ fn background_variables(background: &Background, css: &mut String) {
             blur,
             overlay,
         } => {
-            // 실제 그림은 .pf-backdrop 레이어가 그립니다. background-image 에는
-            // filter 를 걸 수 없어서 흐림 처리를 하려면 별도 요소가 필요합니다.
+            // The actual image is drawn by the .pf-backdrop layer. You can't
+            // apply `filter` to background-image, so blurring needs a separate element.
             let _ = writeln!(css, "  --pf-background: transparent;");
             let _ = writeln!(css, "  --pf-background-image: url(\"{}\");", src.0);
 
-            // repeat 은 원본 크기로 타일링하므로 background-size 를 건드리지 않습니다.
+            // Repeat tiles at the image's native size, so background-size is left alone.
             let (size, repeat) = match fit {
                 crate::config::ImageFit::Cover => ("cover", "no-repeat"),
                 crate::config::ImageFit::Contain => ("contain", "no-repeat"),
@@ -88,11 +89,11 @@ fn background_variables(background: &Background, css: &mut String) {
     }
 }
 
-/// 무늬를 CSS 그라디언트로 그립니다. 이미지 파일이 필요 없고, 색과 크기가
-/// 토큰이라 편집 UI 에서 즉시 반영됩니다.
+/// Draws the pattern as a CSS gradient. No image file needed, and since color
+/// and size are just tokens, the editor UI reflects changes instantly.
 ///
-/// 무늬 요소의 두께를 `size` 에 비례시킨 이유: 고정 px 로 두면 `size` 를 키웠을 때
-/// 점만 작아 보이고 간격만 벌어집니다.
+/// The pattern element's thickness scales with `size` on purpose: with a fixed
+/// px value, increasing `size` would just make the dots look smaller and spread out.
 fn pattern_value(name: PatternName, color: &str, ink: &str, size: &str) -> String {
     match name {
         PatternName::Dots => format!(
@@ -115,7 +116,7 @@ fn pattern_value(name: PatternName, color: &str, ink: &str, size: &str) -> Strin
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 명함 본체 · 카드
+// Sheet & card
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn sheet_variables(sheet: &Sheet, css: &mut String) {
@@ -141,11 +142,11 @@ fn card_variables(card: &Card, css: &mut String) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 글씨
+// Fonts
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn font_variables(font: &Font, css: &mut String) {
-    // 검증을 통과했다면 항상 Some 입니다.
+    // Always Some once validation has passed.
     if let Some(family) = font.body_family() {
         let _ = writeln!(css, "  --pf-font-family: {family};");
     }
@@ -180,7 +181,7 @@ mod tests {
         assert!(css.contains("--pf-background: linear-gradient(165deg, #fff 0%, #000 100%);"));
     }
 
-    /// 이미지 배경은 body 배경이 아니라 전용 레이어로 나가야 합니다.
+    /// An image background must go to its own dedicated layer, not the body background.
     #[test]
     fn image_goes_to_backdrop_layer() {
         let css = css_variables(&theme_with(Background::Image {
@@ -192,14 +193,14 @@ mod tests {
         }));
         assert!(css.contains("--pf-background: transparent;"));
         assert!(css.contains("--pf-background-image: url(\"assets/bg.jpg\");"));
-        // repeat 은 원본 크기를 유지해야 타일이 됩니다.
+        // Repeat has to keep the image's native size for it to tile properly.
         assert!(css.contains("--pf-background-fit: auto;"));
         assert!(css.contains("--pf-background-repeat: repeat;"));
         assert!(css.contains("--pf-background-blur: 8px;"));
         assert!(css.contains("--pf-background-overlay: #ffffff80;"));
     }
 
-    /// 무늬 요소의 두께가 size 에 비례해야 크기를 키웠을 때 무늬가 함께 커집니다.
+    /// The pattern element's thickness must scale with size so the whole pattern grows together.
     #[test]
     fn pattern_scales_with_size() {
         let value = pattern_value(PatternName::Dots, "#fff", "#000", "40px");
@@ -219,7 +220,7 @@ mod tests {
         assert!(css_variables(&theme).contains("--pf-sheet-shadow: none;"));
     }
 
-    /// heading_preset 이 없으면 제목도 본문 폰트를 써야 합니다.
+    /// With no heading_preset set, headings should fall back to the body font.
     #[test]
     fn heading_font_falls_back_to_body_font() {
         let theme = Theme {

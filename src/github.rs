@@ -1,13 +1,14 @@
-//! GitHub 연동.
+//! GitHub integration.
 //!
-//! 토큰은 **OS 자격증명 저장소**에 둡니다 (Windows 자격 증명 관리자, macOS
-//! 키체인, Linux Secret Service). 설정 파일이나 앱 폴더에 평문으로 남기지
-//! 않으므로, 프로젝트 폴더를 통째로 공유하거나 실수로 커밋해도 토큰은
-//! 따라가지 않습니다.
+//! Tokens live in the **OS credential store** (Windows Credential Manager,
+//! macOS Keychain, Linux Secret Service). They're never written in plaintext
+//! to a config file or the app folder, so sharing the whole project folder —
+//! or accidentally committing it — doesn't leak the token along with it.
 //!
-//! 진짜 OAuth 로그인(Authorize 버튼)은 OAuth App 등록이 필요합니다. 등록된
-//! `client_id` 가 생기면 기기 인증 흐름을 여기에 더하면 되고, 나머지(저장소
-//! 목록·생성·Pages 활성화)는 그대로 씁니다.
+//! A real OAuth login (an "Authorize" button) would need a registered OAuth
+//! App. Once we have a registered `client_id`, the device-authorization flow
+//! can be added here, and everything else (listing/creating repos, enabling
+//! Pages) works as-is.
 
 use serde::{Deserialize, Serialize};
 
@@ -19,16 +20,16 @@ const ACCOUNT: &str = "github-token";
 const API: &str = "https://api.github.com";
 const USER_AGENT: &str = "ProfileIT";
 
-/// 토큰을 만들 때 필요한 권한. 링크에 붙여 GitHub 발급 화면을 미리 채웁니다.
+/// Permissions the token needs. Appended to the link to pre-fill GitHub's token page.
 pub const SCOPES: &str = "repo";
 
-/// 토큰 발급 화면. 권한과 이름이 미리 채워집니다.
+/// Token-creation page, with scope and name already filled in.
 pub fn token_page_url() -> String {
     format!("https://github.com/settings/tokens/new?scopes={SCOPES}&description=ProfileIT")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 토큰
+// Token
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub fn store(token: &Token) -> Result<(), Error> {
@@ -44,7 +45,7 @@ pub fn load() -> Option<Token> {
 pub fn forget() -> Result<(), Error> {
     match entry()?.delete_credential() {
         Ok(()) => Ok(()),
-        // 원래 없었으면 지운 것과 결과가 같습니다.
+        // If there was nothing to begin with, that's the same outcome as deleting it.
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(err) => Err(Error::Keyring(err.to_string())),
     }
@@ -72,7 +73,7 @@ pub struct RepoSummary {
     pub owner: String,
     pub private: bool,
     pub default_branch: String,
-    /// git 이 쓸 https 주소.
+    /// The https URL git will use.
     pub clone_url: String,
 }
 
@@ -82,7 +83,7 @@ pub struct PagesInfo {
     pub branch: Option<String>,
 }
 
-/// 토큰이 유효한지 보고 계정을 알려줍니다.
+/// Checks that the token is valid and reports which account it belongs to.
 pub fn whoami(token: &Token) -> Result<Account, Error> {
     let value: serde_json::Value = get(token, "/user")?;
     Ok(Account {
@@ -92,12 +93,12 @@ pub fn whoami(token: &Token) -> Result<Account, Error> {
     })
 }
 
-/// 쓰기 권한이 있는 저장소 목록. 최근에 손댄 것부터 옵니다.
+/// Repositories the token can push to, most recently touched first.
 pub fn list_repos(token: &Token) -> Result<Vec<RepoSummary>, Error> {
     let mut repos = Vec::new();
 
-    // 한 번에 100개씩, 최대 3쪽. 그보다 많으면 목록에서 고르는 것보다
-    // 이름을 직접 적는 편이 빠릅니다.
+    // 100 per page, up to 3 pages. Beyond that, typing the name directly
+    // is faster than picking it out of a list anyway.
     for page in 1..=3 {
         let path =
             format!("/user/repos?per_page=100&page={page}&sort=updated&affiliation=owner,collaborator");
@@ -108,7 +109,7 @@ pub fn list_repos(token: &Token) -> Result<Vec<RepoSummary>, Error> {
         }
 
         for item in items {
-            // 쓸 수 없는 저장소를 목록에 올리면 고른 뒤에야 실패합니다.
+            // Listing a repo the user can't push to would only fail after they pick it.
             let can_push = item
                 .get("permissions")
                 .and_then(|p| p.get("push"))
@@ -130,16 +131,17 @@ pub fn list_repos(token: &Token) -> Result<Vec<RepoSummary>, Error> {
     Ok(repos)
 }
 
-/// 새 저장소를 만듭니다.
+/// Creates a new repository.
 pub fn create_repo(token: &Token, name: &str, private: bool) -> Result<RepoSummary, Error> {
     let body = serde_json::json!({
         "name": name,
         "private": private,
-        // 저장소 설명은 GitHub 에 그대로 남아 누구에게나 보입니다. 앱 화면 언어를
-        // 따라가면 같은 저장소가 볼 때마다 달라질 수도 없고, 읽는 사람이 앱 사용자도
-        // 아니므로 영어로 고정합니다.
+        // The repo description stays on GitHub for anyone to see. Following the
+        // app's UI language would make the same repo read differently depending
+        // on who's looking, and the reader isn't necessarily an app user anyway,
+        // so we hardcode English.
         "description": "An online business card made with ProfileIT",
-        // 빈 저장소면 Pages 를 켜기 전에 커밋이 하나는 있어야 합니다.
+        // An empty repo needs at least one commit before Pages can be enabled.
         "auto_init": true,
     });
 
@@ -150,7 +152,7 @@ pub fn create_repo(token: &Token, name: &str, private: bool) -> Result<RepoSumma
     })
 }
 
-/// Pages 를 켭니다. 이미 켜져 있으면 브랜치만 바꿉니다.
+/// Enables Pages. If it's already enabled, just switches the branch.
 pub fn enable_pages(
     token: &Token,
     owner: &str,
@@ -159,7 +161,7 @@ pub fn enable_pages(
 ) -> Result<PagesInfo, Error> {
     let source = serde_json::json!({ "branch": branch, "path": "/" });
 
-    // 처음이면 POST 로 만들고, 이미 있으면 409 가 오므로 PUT 으로 고칩니다.
+    // POST creates it the first time; if it already exists we get a 409, so we PUT instead.
     let created = post(
         token,
         &format!("/repos/{owner}/{repo}/pages"),
@@ -186,7 +188,7 @@ pub fn pages_status(token: &Token, owner: &str, repo: &str) -> Result<PagesInfo,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 요청
+// Requests
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn get(token: &Token, path: &str) -> Result<serde_json::Value, Error> {
@@ -224,8 +226,8 @@ fn send(
         }),
 
         Err(ureq::Error::Status(status, response)) => {
-            // GitHub 이 이유를 JSON 으로 알려줍니다. 그대로 보여주는 편이
-            // "요청 실패" 보다 훨씬 쓸모 있습니다.
+            // GitHub tells us why in JSON. Showing that as-is is far more useful
+            // than a generic "request failed".
             let detail = response
                 .into_json::<serde_json::Value>()
                 .ok()
@@ -239,8 +241,8 @@ fn send(
                     403 if detail.contains("rate limit") => Message::new("msg.gh.rateLimit"),
                     403 => Message::new("msg.gh.forbidden").with("scopes", SCOPES),
                     404 => Message::new("msg.gh.notFound"),
-                    // GitHub 이 준 설명을 그대로 씁니다. 번역할 수 없지만
-                    // "요청 실패" 보다 훨씬 쓸모 있습니다.
+                    // Use GitHub's own description verbatim. We can't translate it,
+                    // but it's still far more useful than a generic "request failed".
                     _ if !detail.is_empty() => Message::new("msg.gh.detail").with("detail", detail),
                     _ => Message::new("msg.gh.status").with("status", status),
                 },
@@ -284,7 +286,7 @@ fn string(value: &serde_json::Value, key: &str) -> Option<String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 오류
+// Errors
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -295,7 +297,7 @@ pub enum Error {
 }
 
 impl Error {
-    /// 화면에 내보낼 문구. 어느 언어로 만들지는 부르는 쪽이 정합니다.
+    /// The message to show the user. The caller decides what language to render it in.
     pub fn message(&self) -> Message {
         match self {
             Error::Keyring(detail) => Message::new("msg.gh.keyring").with("detail", detail),
@@ -309,7 +311,7 @@ impl Error {
 mod tests {
     use super::*;
 
-    /// 토큰이 로그나 오류 메시지에 딸려 나가면 안 됩니다.
+    /// The token must never end up tagging along in logs or error messages.
     #[test]
     fn token_never_prints_itself() {
         let token = Token::new("ghp_superSecretValue123");
@@ -317,7 +319,7 @@ mod tests {
         assert_eq!(format!("{token:?}"), "Token(***)");
         assert!(!format!("{token:#?}").contains("superSecret"));
 
-        // 구조체 안에 담겨도 마찬가지여야 합니다.
+        // The same must hold even when it's wrapped inside a struct.
         #[derive(Debug)]
         struct Holder {
             #[allow(dead_code)]
@@ -351,7 +353,7 @@ mod tests {
         assert_eq!(repo.clone_url, "https://github.com/aiden/card.git");
     }
 
-    /// 필수 항목이 빠진 응답으로 엉뚱한 저장소를 만들면 안 됩니다.
+    /// A response missing required fields must not produce a bogus repository.
     #[test]
     fn incomplete_repository_payload_is_rejected() {
         let value = serde_json::json!({ "name": "card" });
