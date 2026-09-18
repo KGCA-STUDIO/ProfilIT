@@ -243,6 +243,8 @@ pub enum SectionBody {
     Links { items: Vec<LinkItem> },
     /// Contact methods like email or phone.
     Contact { items: Vec<ContactItem> },
+    /// Grid of photos.
+    Gallery { items: Vec<GalleryImage> },
 }
 
 impl SectionBody {
@@ -255,6 +257,7 @@ impl SectionBody {
             "tags" => &["items"],
             "links" => &["items"],
             "contact" => &["items"],
+            "gallery" => &["items"],
             _ => &[],
         }
     }
@@ -367,6 +370,18 @@ pub struct ContactItem {
     /// Label shown on screen. Falls back to the default name for `kind` if omitted.
     #[serde(default)]
     pub label: Option<Text>,
+}
+
+/// A photo in a gallery section.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GalleryImage {
+    pub src: AssetPath,
+    /// Shown under the photo when opened full-size.
+    #[serde(default)]
+    pub caption: Option<Text>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]

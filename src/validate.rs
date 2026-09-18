@@ -8,8 +8,8 @@
 use std::path::Path;
 
 use crate::config::{
-    AssetPath, Background, Config, ContactItem, ContactKind, Decoration, Font, FontPreset, Platform,
-    Section, SectionBody, SCHEMA_VERSION,
+    AssetPath, Background, Config, ContactItem, ContactKind, Decoration, Font, FontPreset,
+    Platform, Section, SectionBody, SCHEMA_VERSION,
 };
 use crate::i18n::{self, Text};
 use crate::message::Message;
@@ -231,6 +231,14 @@ fn collect_texts<'a>(config: &'a Config) -> Vec<(String, &'a Text)> {
                     push(format!("{p}.value"), &item.value);
                     if let Some(t) = &item.label {
                         push(format!("{p}.label"), t);
+                    }
+                }
+            }
+
+            SectionBody::Gallery { items } => {
+                for (j, item) in items.iter().enumerate() {
+                    if let Some(t) = &item.caption {
+                        push(format!("{base}.items[{j}].caption"), t);
                     }
                 }
             }
@@ -494,6 +502,18 @@ fn check_section(
             }
             for (j, item) in items.iter().enumerate() {
                 check_contact_item(&format!("{base}.items[{j}]"), item, default_lang, out);
+            }
+        }
+
+        SectionBody::Gallery { items } => {
+            if items.iter().all(|i| !i.enabled) {
+                out.push(Diagnostic::warning(
+                    format!("{base}.items"),
+                    "msg.gallery.noVisible",
+                ));
+            }
+            for (j, item) in items.iter().enumerate() {
+                check_asset(&format!("{base}.items[{j}].src"), &item.src, root, out);
             }
         }
     }

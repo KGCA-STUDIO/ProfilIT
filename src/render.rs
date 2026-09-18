@@ -7,8 +7,8 @@
 use maud::{html, Markup, DOCTYPE};
 
 use crate::config::{
-    ChecklistItem, Config, ContactItem, ContactKind, Decoration, LinkItem, Section, SectionBody,
-    Social, TimelineItem,
+    ChecklistItem, Config, ContactItem, ContactKind, Decoration, GalleryImage, LinkItem, Section,
+    SectionBody, Social, TimelineItem,
 };
 use crate::i18n::{Strings, Text};
 use crate::{decor, icons, theme};
@@ -386,6 +386,14 @@ fn section_body(body: &SectionBody, ctx: &Ctx) -> Markup {
                 @for item in items { (contact_row(item, ctx)) }
             }
         },
+
+        SectionBody::Gallery { items } => html! {
+            ul class="pf-gallery" {
+                @for item in items.iter().filter(|i| i.enabled) {
+                    (gallery_item(item, ctx))
+                }
+            }
+        },
     }
 }
 
@@ -497,6 +505,26 @@ fn link_card(item: &LinkItem, ctx: &Ctx) -> Markup {
                     svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" {
                         (icons::share())
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Links straight to the source file — opening the same image the page
+/// already downloaded, rather than a separate full-size copy, keeps this
+/// section from needing its own asset pipeline.
+fn gallery_item(item: &GalleryImage, ctx: &Ctx) -> Markup {
+    let src = ctx.asset_path(&item.src.0);
+    let caption = item.caption.as_ref().map(|c| ctx.t(c));
+
+    html! {
+        li class="pf-gallery__item" {
+            a class="pf-gallery__link" href=(src) target="_blank" rel="noopener noreferrer" {
+                img class="pf-gallery__img" src=(src) alt=(caption.unwrap_or_default())
+                    loading="lazy" decoding="async";
+                @if let Some(caption) = caption {
+                    span class="pf-gallery__caption" { (caption) }
                 }
             }
         }
@@ -782,5 +810,47 @@ name = \"n\"
     fn avatar_placeholder_uses_first_character() {
         assert_eq!(first_grapheme("김도윤"), "김");
         assert_eq!(first_grapheme(""), "");
+    }
+
+    /// A gallery photo links to the same file it displays, and shows its
+    /// caption only when one is set.
+    #[test]
+    fn gallery_item_links_to_the_photo_and_shows_its_caption() {
+        let strings = Strings::load("ko", Path::new(".")).unwrap_or_default();
+        let config: Config = toml::from_str(
+            "schema_version = 1
+[site]
+lang = \"ko\"
+title = \"t\"
+[profile]
+name = \"n\"
+",
+        )
+        .expect("최소 설정 파싱");
+        let ctx = Ctx {
+            config: &config,
+            lang: "ko",
+            fallback: "ko",
+            strings: &strings,
+            languages: &[],
+            prefix: "",
+        };
+        let item = GalleryImage {
+            src: crate::config::AssetPath("assets/gallery-01.jpg".to_string()),
+            caption: Some(Text::from("지리산 종주")),
+            enabled: true,
+        };
+        let html = gallery_item(&item, &ctx).into_string();
+        assert!(html.contains(r#"href="assets/gallery-01.jpg""#), "{html}");
+        assert!(html.contains(r#"src="assets/gallery-01.jpg""#), "{html}");
+        assert!(html.contains("지리산 종주"), "{html}");
+
+        let no_caption = GalleryImage {
+            src: crate::config::AssetPath("assets/gallery-02.jpg".to_string()),
+            caption: None,
+            enabled: true,
+        };
+        let html = gallery_item(&no_caption, &ctx).into_string();
+        assert!(!html.contains("pf-gallery__caption"), "{html}");
     }
 }

@@ -687,6 +687,39 @@ html.js .pf-card__share {
   }
 }
 
+/* ─── type = "gallery" ────────────────────────────────────────────────────── */
+.pf-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.pf-gallery__link {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--pf-card-radius);
+}
+
+.pf-gallery__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pf-gallery__caption {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 14px 8px 6px;
+  background: linear-gradient(to top, rgb(0 0 0 / 60%), transparent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
 /* ─── type = "contact" ───────────────────────────────────────────────────────
    The label column width is max-content rather than fixed, so values still
    line up neatly even when labels of different lengths (like "Email" vs.

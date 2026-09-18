@@ -733,6 +733,7 @@
 
   function itemLabel(type, item) {
     if (type === "contact") return item.kind;
+    if (type === "gallery") return readText(item.caption) || baseText(item.caption) || t("editor.item");
     return readText(item.title || item.text) || baseText(item.title || item.text) || t("editor.item");
   }
 
@@ -761,6 +762,13 @@
         row([checkField(t("editor.show"), item, "enabled"), checkField(t("editor.link.highlight"), item, "highlight")]),
       ];
     }
+    if (type === "gallery") {
+      return [
+        imageField(t("editor.gallery.image"), item, "src", "gallery"),
+        textField(t("editor.gallery.caption"), item, "caption"),
+        checkField(t("editor.show"), item, "enabled"),
+      ];
+    }
     // contact
     return [
       row([
@@ -775,6 +783,7 @@
     if (type === "timeline") return { title: "", enabled: true };
     if (type === "checklist") return { text: "", done: false };
     if (type === "links") return { title: "", url: "https://", enabled: true };
+    if (type === "gallery") return { src: "", enabled: true };
     return { kind: "email", value: "" };
   }
 

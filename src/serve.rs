@@ -423,7 +423,7 @@ fn meta(root: &Path) -> Value {
             "naver", "naver_blog", "kakao_talk", "github", "linkedin",
             "email", "rss", "custom",
         ],
-        "sectionTypes": ["about", "timeline", "checklist", "tags", "links", "contact"],
+        "sectionTypes": ["about", "timeline", "checklist", "tags", "links", "contact", "gallery"],
         "contactKinds": ["email", "phone", "address", "website", "custom"],
         "backgroundTypes": ["solid", "gradient", "pattern", "image"],
         "patternNames": ["dots", "grid", "stripes", "checks"],
